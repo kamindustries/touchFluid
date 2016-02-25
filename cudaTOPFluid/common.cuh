@@ -5,7 +5,7 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 //#include <helper_cuda.h>         // helper functions for CUDA error check
-#include "TCUDA_Types.h"
+#include "private/TCUDA_Types.h"
 #include <driver_types.h>
 #include "defines.h"
 
