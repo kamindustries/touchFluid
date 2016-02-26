@@ -7,6 +7,12 @@
 #include "common.cuh"
 
 dim3 grid, threads;
+
+bool runOnce = true;
+int dimX, dimY, size;
+float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
+int *boundary;
+
 float dt = 0.1;
 float diff = 0.00001f;
 float visc = 0.000f;
@@ -18,14 +24,43 @@ float dB = 0.00001;
 
 void initVariables(const TCUDA_ParamInfo *output)
 {
+	// Set container dimensions to whatever the incoming TOP is set to
+	dimX = output->top.width;
+	dimY = output->top.height;
+	size = dimX * dimY;
+
 	threads = dim3(16,16);
 	grid.x = (output->top.width + threads.x - 1) / threads.x; //replace with dimX, dimY
 	grid.y = (output->top.height + threads.y - 1) / threads.y;
 	
-	printf("w: %d, h: %d\n", dimX, dimY);
+	printf("Container size: %d x %d\n", dimX, dimY);
+	
+	//buoy = 0.0;
+
 }
 
-void initArrays() {
+void initCUDA() 
+{
+	//cudaMalloc((void**)&u, sizeof(float)*size );
+	//cudaMalloc((void**)&u_prev, sizeof(float)*size );
+	//cudaMalloc((void**)&v, sizeof(float)*size );
+	//cudaMalloc((void**)&v_prev, sizeof(float)*size );
+	//cudaMalloc((void**)&dens, sizeof(float)*size );
+	//cudaMalloc((void**)&dens_prev, sizeof(float)*size );
+
+	cudaMalloc((void**)&chemA, sizeof(float)*size);
+	cudaMalloc((void**)&chemA_prev, sizeof(float)*size);
+	cudaMalloc((void**)&chemB, sizeof(float)*size);
+	cudaMalloc((void**)&chemB_prev, sizeof(float)*size);
+	cudaMalloc((void**)&laplacian, sizeof(float)*size);
+	cudaMalloc((void**)&boundary, sizeof(int)*size);
+
+	printf("initCUDA(): Allocated GPU memory.\n");
+}
+
+
+void initArrays() 
+{
   //ClearArray<<<grid,threads>>>(u, 0.0);
   //ClearArray<<<grid,threads>>>(u_prev, 0.0);
   //ClearArray<<<grid,threads>>>(v, 0.0);
@@ -40,7 +75,15 @@ void initArrays() {
   ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(boundary, 0.0, dimX, dimY);
 
-  //buoy = 0.0;
+  printf("initArrays(): Initialized GPU arrays.\n");
+}
+
+void initialize(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_output)
+{
+	initVariables(_output);
+	initCUDA();
+	initArrays();
+	printf("initialize(): done.");
 }
 
 void get_from_UI(const TCUDA_ParamInfo **field, float *_chemA0, float *_chemB0) 
@@ -175,11 +218,10 @@ extern "C"
 		}
 
 		if (runOnce) {
-			initVariables(output);
-			initArrays();
+			initialize(params, output);
 			runOnce = false;
-			printf("tCudaExecuteKernel: ran once.");
 		}
+
 		simulate(params, output);
 
 		//dim3 block(16, 16, 1);

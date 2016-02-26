@@ -13,33 +13,6 @@
 
 #include "../common.cuh"
 
-bool runOnce;
-int dimX, dimY, size;
-float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
-int *boundary;
-
-void initCUDA() 
-{
-	dimX = 256;
-	dimY = 256;
-	size = dimX * dimY;
-	//cudaMalloc((void**)&u, sizeof(float)*size );
-	//cudaMalloc((void**)&u_prev, sizeof(float)*size );
-	//cudaMalloc((void**)&v, sizeof(float)*size );
-	//cudaMalloc((void**)&v_prev, sizeof(float)*size );
-	//cudaMalloc((void**)&dens, sizeof(float)*size );
-	//cudaMalloc((void**)&dens_prev, sizeof(float)*size );
-
-	cudaMalloc((void**)&chemA, sizeof(float)*size);
-	cudaMalloc((void**)&chemA_prev, sizeof(float)*size);
-	cudaMalloc((void**)&chemB, sizeof(float)*size);
-	cudaMalloc((void**)&chemB_prev, sizeof(float)*size);
-	cudaMalloc((void**)&laplacian, sizeof(float)*size);
-	cudaMalloc((void**)&boundary, sizeof(int)*size);
-
-	runOnce = true;
-}
-
 // This is needed around every function so the compiler keeps the function name exactly, so Touch can find it.
 extern "C" {
 	
@@ -55,8 +28,6 @@ tCudaGetAPIVersion()
 DLLEXPORT void 
 tCudaNodeAttached (const TCUDA_NodeInfo *info)
 {
-	initCUDA();
-
 #ifdef _DEBUG
 	printf("Node %s has attached itself to this .dll\n", info->node);
 	switch (info->outputType)
