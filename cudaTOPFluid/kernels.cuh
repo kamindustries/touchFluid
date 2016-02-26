@@ -46,6 +46,19 @@ getY(int h)
   return y;
 }
 
+
+// Returns true if within the bounds of both the container edges and a user-defined boundary
+__device__ bool
+checkBounds(int *_boundary, int x, int y, int w, int h)
+{
+	if (x > 1 && x < w-1 && y > 1 && y < h-1 && _boundary[IX(x,y)] < 1 ){
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
 // Functions for converting to/from a int (4 bytes, 1 byte per RGBA, which are in the range 0-255)
 // to 4 floats in the range 0.0-1.0 
 // Note how the data is stored in BGRA format due to how its stored on the GPU.
@@ -82,7 +95,31 @@ DrawSquare( float *field, float value, int w, int h ) {
 }
 
 __global__ void 
+DrawBnd( int *boundary, int w, int h ) {
+  int x = getX(w);
+  int y = getY(h);
+  int id = IX(x,y);
+
+  float posX = (float)x/w;
+  float posY = (float)y/h;
+  if ( posX < .82 && posX > .70 && posY < .33 && posY > .21 ) {
+    boundary[id] = 1;
+  }
+  else boundary[id] = 0;
+}
+
+__global__ void 
 ClearArray(float *field, float value, int w, int h) 
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	field[id] = value;
+}
+
+__global__ void 
+ClearArray(int *field, float value, int w, int h) 
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -103,6 +140,20 @@ MakeSource(int *src, float *dest, int w, int h)
 	intToRgba(pixel, r, g, b, a);
 	
 	dest[id] = r;
+}
+
+__global__ void
+MakeSource(int *src, int *dest, int w, int h)
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	int pixel = src[id];
+	float r,g,b,a;
+	intToRgba(pixel, r, g, b, a);
+	
+	dest[id] = src[id]&0xff/255;
 }
 
 __global__ void 
@@ -137,14 +188,14 @@ LinSolve(float *field, float *field0, float a, float c, int w, int h)
 }
 
 __global__ void 
-Diffusion(float *_chem, float *_lap, float _difConst, float dt, int w, int h) 
+Diffusion(float *_chem, float *_lap, int *_boundary, float _difConst, float dt, int w, int h) 
 {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 	int size = (w*h)-2;
 
-	if (x>1 && x<size && y>1 && y<size){
+	if (checkBounds(_boundary, x, y, w, h)) {
 		int n1 = id + 1;
 		int n2 = id - 1;
 		int n3 = id + w;
@@ -172,13 +223,13 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, int *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
-
 	int size = (w*h)-2;
-	if (x>1 && x<w-1 && y>1 && y<h-1){
+
+	if (checkBounds(_boundary, x, y, w, h)) {
 		float F = 0.05;
 		float k = 0.0675;
 		float A = _chemA[id];

@@ -38,6 +38,7 @@ void initArrays() {
   ClearArray<<<grid,threads>>>(chemB, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(chemB_prev, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
+  ClearArray<<<grid,threads>>>(boundary, 0.0, dimX, dimY);
 
   //buoy = 0.0;
 }
@@ -52,7 +53,12 @@ void get_from_UI(const TCUDA_ParamInfo **field, float *_chemA0, float *_chemB0)
 //	ClearArray<<<grid,threads>>>(_v, 0.0);
 
 	//DrawSquare<<<grid,threads>>>(_chemB0, 1.0, dimX, dimY);
+
+	// Use first input as material for chemB
 	MakeSource<<<grid,threads>>>((int*)field[0]->data, _chemB0, dimX, dimY);
+	
+	// Use second input as boundary conditions
+	MakeSource<<<grid,threads>>>((int*)field[1]->data, boundary, dimX, dimY);
 
 //	if ( !mouse_down[0] && !mouse_down[2] ) return;
 
@@ -94,15 +100,15 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 	_chemA0 = _chemA;
 	_chemB0 = _chemB;
 	for (int i = 0; i < 10; i++){
-		Diffusion<<<grid,threads>>>(_chemA, laplacian, dA, dt, dimX, dimY);
+		Diffusion<<<grid,threads>>>(_chemA, laplacian, boundary, dA, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(_chemA, laplacian, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
-		Diffusion<<<grid,threads>>>(_chemB, laplacian, dB, dt, dimX, dimY);
+		Diffusion<<<grid,threads>>>(_chemB, laplacian, boundary, dB, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(_chemB, laplacian, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
-		React<<<grid,threads>>>( _chemA, _chemB, dt, dimX, dimY );
+		React<<<grid,threads>>>( _chemA, _chemB, boundary, dt, dimX, dimY );
 	}
 
 	//SWAP ( _chemA0, _chemA );

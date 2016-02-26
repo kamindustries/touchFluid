@@ -12,6 +12,7 @@
 extern bool runOnce;
 extern int dimX, dimY, size;
 extern float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
+extern int *boundary;
 
 
 #endif 

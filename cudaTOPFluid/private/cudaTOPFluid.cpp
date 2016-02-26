@@ -16,6 +16,7 @@
 bool runOnce;
 int dimX, dimY, size;
 float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
+int *boundary;
 
 void initCUDA() 
 {
@@ -29,11 +30,12 @@ void initCUDA()
 	//cudaMalloc((void**)&dens, sizeof(float)*size );
 	//cudaMalloc((void**)&dens_prev, sizeof(float)*size );
 
-	cudaMalloc((void**)&chemA, sizeof(float)*size );
-	cudaMalloc((void**)&chemA_prev, sizeof(float)*size );
-	cudaMalloc((void**)&chemB, sizeof(float)*size );
-	cudaMalloc((void**)&chemB_prev, sizeof(float)*size );
-	cudaMalloc((void**)&laplacian, sizeof(float)*size );
+	cudaMalloc((void**)&chemA, sizeof(float)*size);
+	cudaMalloc((void**)&chemA_prev, sizeof(float)*size);
+	cudaMalloc((void**)&chemB, sizeof(float)*size);
+	cudaMalloc((void**)&chemB_prev, sizeof(float)*size);
+	cudaMalloc((void**)&laplacian, sizeof(float)*size);
+	cudaMalloc((void**)&boundary, sizeof(int)*size);
 
 	runOnce = true;
 }
