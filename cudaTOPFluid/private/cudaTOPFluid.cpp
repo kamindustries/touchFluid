@@ -78,6 +78,9 @@ tCudaGetGeneralInfo(const TCUDA_NodeInfo *info, TCUDA_GeneralInfo *ginfo)
 }
 
 // This function tells us in what format the data will be outputted from the kernel.
+// KK:	if dataFormat is changed to TCUDA_DATA_FORMAT_FLOAT, it outputs 32 bit floats instead of
+//		8 bit chars. Some clever ordering of data might allow for more channels to be output...
+//		Can I do 3d textures?
 DLLEXPORT void 
 tCudaGetTOPKernelOutputInfo(const TCUDA_NodeInfo *info, TCUDA_TOPKernelOutputInfo *oinfo)
 {
@@ -94,9 +97,9 @@ DLLEXPORT bool
 tCudaGetParamInfo(const TCUDA_NodeInfo *info, const TCUDA_ParamRequest *request, TCUDA_ParamRequestResult *reqResult)
 {
 #ifdef _DEBUG
-	printf("Got Param Info Request for %s, input %d \n", request->name, request->inputNumber);
+	//printf("Got Param Info Request for %s, input %d \n", request->name, request->inputNumber);
 #endif
-	if (request->dataType == TCUDA_DATA_TYPE_TOP)
+	if (request->dataType == TCUDA_DATA_TYPE_TOP || request->dataType == TCUDA_DATA_TYPE_CHOP)
 	//if (request->dataType == TCUDA_DATA_TYPE_TOP && request->inputNumber == 0)
 	{
 		reqResult->top.dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;

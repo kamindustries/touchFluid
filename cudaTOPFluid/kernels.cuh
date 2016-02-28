@@ -202,10 +202,8 @@ Diffusion(float *_chem, float *_lap, int *_boundary, float _difConst, float dt, 
 		int n4 = id - w;
 
 		// constants
-		// float xLength = (float)DIM/100.0;
-		float xLength = 2.56f;
-		// float dx = (float)xLength/DIM;
-		float dx = 0.01f;
+		float xLength = (float)x/100.0;
+		float dx = (float)xLength/(float)x;
 		float alpha = (float)(_difConst * dt / (float)(dx*dx));
 
 		_lap[id] = (float)(-4.0f * _chem[id]) + (float)(_chem[n1] + _chem[n2] + _chem[n3] + _chem[n4]);
