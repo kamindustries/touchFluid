@@ -36,6 +36,8 @@ char* TCUDA_FogType_enum[];
 char* TCUDA_MemType_enum[];
 
 
+// Testing a commit
+
 void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("\n----------\nINCOMING PARAMETERS:\n");
 	printf("%d nodes connected\n\n", nparams);
