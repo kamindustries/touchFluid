@@ -11,13 +11,18 @@ dim3 grid, threads;
 bool runOnce = true;
 int dimX, dimY, size;
 float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
+float *u, *u_prev, *v, *v_prev;
+
+// incoming data
+float *mouse, *mouse_old;
 int *boundary;
+const TCUDA_ParamInfo *mouseCHOP;
 
 float dt = 0.1;
 float diff = 0.00001f;
-float visc = 0.000f;
-float force = 5.0;
-float buoy;
+float visc = 0.000001f;
+float force = 500.0;
+float buoy = 0.0;
 float source_density = 5.0;
 float dA = 0.0002; // diffusion constants
 float dB = 0.00001;
@@ -36,7 +41,13 @@ char* TCUDA_FogType_enum[];
 char* TCUDA_MemType_enum[];
 
 
-// Testing a commit
+bool hasEnding (std::string const &fullString, std::string const &ending) {
+    if (fullString.length() >= ending.length()) {
+        return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
+    } else {
+        return false;
+    }
+}
 
 void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("\n----------\nINCOMING PARAMETERS:\n");
@@ -61,31 +72,46 @@ void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("----------\n\n");
 }
 
-void initVariables(const TCUDA_ParamInfo *output)
+void findCHOPS(const int nparams, const TCUDA_ParamInfo **params){
+	for (int i = 0; i < nparams; i++){
+		if (hasEnding(params[i]->name, "mouseOUT")){
+			mouseCHOP = params[i];
+			printf("findCHOPS(): found mouse: %s\n", mouseCHOP->name);
+		}
+	}
+
+}
+
+void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_output)
 {
 	// Set container dimensions to whatever the incoming TOP is set to
-	dimX = output->top.width;
-	dimY = output->top.height;
+	dimX = _output->top.width;
+	dimY = _output->top.height;
 	size = dimX * dimY;
 
 	threads = dim3(16,16);
-	grid.x = (output->top.width + threads.x - 1) / threads.x; //replace with dimX, dimY
-	grid.y = (output->top.height + threads.y - 1) / threads.y;
+	grid.x = (_output->top.width + threads.x - 1) / threads.x; //replace with dimX, dimY
+	grid.y = (_output->top.height + threads.y - 1) / threads.y;
 	
 	printf("-- DIMENSIONS: %d x %d --\n", dimX, dimY);
+	
+	// Get mouse info
+	int num_mouse_chans = mouseCHOP->chop.numChannels;
+	mouse = (float*)malloc(sizeof(float)*num_mouse_chans);
+	mouse_old = (float*)malloc(sizeof(float)*num_mouse_chans);
+	cudaMemcpy(mouse, (float*)mouseCHOP->data, sizeof(float)*num_mouse_chans, cudaMemcpyDeviceToHost);
+	for (int i=0; i<num_mouse_chans; i++){
+		mouse_old[i]=mouse[i];
+	}
 	printf("initVariables(): done.\n");
-	//buoy = 0.0;
-
 }
 
 void initCUDA() 
 {
-	//cudaMalloc((void**)&u, sizeof(float)*size );
-	//cudaMalloc((void**)&u_prev, sizeof(float)*size );
-	//cudaMalloc((void**)&v, sizeof(float)*size );
-	//cudaMalloc((void**)&v_prev, sizeof(float)*size );
-	//cudaMalloc((void**)&dens, sizeof(float)*size );
-	//cudaMalloc((void**)&dens_prev, sizeof(float)*size );
+	cudaMalloc((void**)&u, sizeof(float)*size );
+	cudaMalloc((void**)&u_prev, sizeof(float)*size );
+	cudaMalloc((void**)&v, sizeof(float)*size );
+	cudaMalloc((void**)&v_prev, sizeof(float)*size );
 
 	cudaMalloc((void**)&chemA, sizeof(float)*size);
 	cudaMalloc((void**)&chemA_prev, sizeof(float)*size);
@@ -100,12 +126,10 @@ void initCUDA()
 
 void initArrays() 
 {
-  //ClearArray<<<grid,threads>>>(u, 0.0);
-  //ClearArray<<<grid,threads>>>(u_prev, 0.0);
-  //ClearArray<<<grid,threads>>>(v, 0.0);
-  //ClearArray<<<grid,threads>>>(v_prev, 0.0);
-  //ClearArray<<<grid,threads>>>(dens, 0.0);
-  //ClearArray<<<grid,threads>>>(dens_prev, 0.0);
+  ClearArray<<<grid,threads>>>(u, 0.0, dimX, dimY);
+  ClearArray<<<grid,threads>>>(u_prev, 0.0, dimX, dimY);
+  ClearArray<<<grid,threads>>>(v, 0.0, dimX, dimY);
+  ClearArray<<<grid,threads>>>(v_prev, 0.0, dimX, dimY);
 
   ClearArray<<<grid,threads>>>(chemA, 1.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(chemA_prev, 1.0, dimX, dimY);
@@ -120,103 +144,164 @@ void initArrays()
 void initialize(const int _nparams, const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_output)
 {
 	printNodeInfo(_nparams, _params);
-	initVariables(_output);
+	findCHOPS(_nparams, _params);
+	initVariables(_params, _output);
 	initCUDA();
 	initArrays();
-	printf("initialize(): done.");
+	printf("initialize(): done.\n");
 }
 
-void get_from_UI(const TCUDA_ParamInfo **field, float *_chemA0, float *_chemB0) 
+void get_from_UI(const TCUDA_ParamInfo **params, float *_chemA0, float *_chemB0, float *_u, float *_v) 
 {
-//	int i, j = (N+2)*(N+2);
-
 	ClearArray<<<grid,threads>>>(_chemA0, 1.0, dimX, dimY);
 	ClearArray<<<grid,threads>>>(_chemB0, 0.0, dimX, dimY);
-//	ClearArray<<<grid,threads>>>(_u, 0.0);
-//	ClearArray<<<grid,threads>>>(_v, 0.0);
+	ClearArray<<<grid,threads>>>(_u, 0.0, dimX, dimY);
+	ClearArray<<<grid,threads>>>(_v, 0.0, dimX, dimY);
 
 	//DrawSquare<<<grid,threads>>>(_chemB0, 1.0, dimX, dimY);
 
 	// Use first input as material for chemB
-	MakeSource<<<grid,threads>>>((int*)field[0]->data, _chemB0, dimX, dimY);
+	MakeSource<<<grid,threads>>>((int*)params[0]->data, _chemB0, dimX, dimY);
 	
 	// Use second input as boundary conditions
-	MakeSource<<<grid,threads>>>((int*)field[1]->data, boundary, dimX, dimY);
+	MakeSource<<<grid,threads>>>((int*)params[1]->data, boundary, dimX, dimY);
 
-//	if ( !mouse_down[0] && !mouse_down[2] ) return;
+	// Update mouse info
+	cudaMemcpy(mouse, (float*)params[2]->data, sizeof(float)*params[2]->chop.numChannels, cudaMemcpyDeviceToHost);
 
-//	// map mouse position to window size
-//	float mx_f = (float)(mouse_x)/(float)win_x;
-//	float my_f = (float)(win_y-mouse_y)/(float)win_y;
-//	i = (int)(mx_f*N+1);
-//	j = (int)(my_f*N+1);
+	if ( mouse[2] < 1.0 && mouse[3] < 1.0 ) return;
 
-//	float x_diff = mouse_x-mouse_x_old;
-//	float y_diff = mouse_y_old-mouse_y;
-//	if (frameNum % 50 == 0) printf("%f, %f\n", x_diff, y_diff);
+	// map mouse position to window size
+	//float mouse[0] = (float)(mouse_x)/(float)win_x;
+	//float mouse[1] = (float)(win_y-mouse_y)/(float)win_y;
+	int i, j = dimX * dimY;
+	i = (int)(mouse[0]*dimX-1);
+	j = (int)(mouse[1]*dimY-1);
 
-//	if ( i<1 || i>N || j<1 || j>N ) return;
+	float x_diff = mouse[0]-mouse_old[0];
+	float y_diff = mouse[1]-mouse_old[1];
+	//printf("%f, %f\n", x_diff, y_diff);
 
-//	if ( mouse_down[0] ) {
-//	GetFromUI<<<grid,threads>>>(_u, i, j, x_diff * force);
-//	GetFromUI<<<grid,threads>>>(_v, i, j, y_diff * force);
-//	}
+	if ( i<1 || i>dimX || j<1 || j>dimY ) return;
 
-//	if ( mouse_down[2]) {
-//	GetFromUI<<<grid,threads>>>(_chemB, i, j, source_density);
-//	particleSystem.addParticles(mx_f, my_f, 100, .04);
-//	}
+	if ( mouse[2] > 0.0 && mouse[3] > 0.0) {
+		GetFromUI<<<grid,threads>>>(_u, x_diff * force, i, j, dimX, dimY);
+		GetFromUI<<<grid,threads>>>(_v, y_diff * force, i, j, dimX, dimY);
+	}
 
-//	mouse_x_old = mouse_x;
-//	mouse_y_old = mouse_y;
+	if ( mouse[3] > 0.0) {
+		GetFromUI<<<grid,threads>>>(_chemB0, source_density, i, j, dimX, dimY);
+//		particleSystem.addParticles(mouse[0], mouse[1], 100, .04);
+	}
 
-//	return;
+	for (int i=0; i<6; i++){
+		mouse_old[i]=mouse[i];
+	}
+
+	return;
 }
 
-//void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
-//				  float *u, float *v, float diff, float dt )
+void diffuse_step(int b, float *field, float *field0, int *bounds, float diff, float dt){
+	float a=dt*diff*float(dimX-2)*float(dimY-2); // needed to float(N) to get it to work...
+	for (int k = 0; k < 20; k++) {
+		LinSolve<<<grid,threads>>>( field, field0, a, (float)1.0+(4.0*a), dimX, dimY );
+		SetBoundary<<<grid,threads>>>( b, field, bounds, dimX, dimY );
+	}
+}
+
+void advect_step ( int b, float *field, float *field0, float *u, float *v, int *bounds, float dt ){
+	Advect<<<grid,threads>>>( field, field0, u, v, dt, dimX, dimY );
+	SetBoundary<<<grid,threads>>>( b, field, bounds, dimX, dimY );
+}
+
+void proj_step( float *u, float *v, float *p, float *div, int *bounds) {
+	Project<<<grid,threads>>>( u, v, p, div, dimX, dimY);
+	SetBoundary<<<grid,threads>>>(0, div, bounds, dimX, dimY);
+	SetBoundary<<<grid,threads>>>(0, p, bounds, dimX, dimY);
+	for (int k = 0; k < 20; k++) {
+		LinSolve<<<grid,threads>>>( p, div, 1.0, 4.0, dimX, dimY );
+		SetBoundary<<<grid,threads>>>(0, p, bounds, dimX, dimY);
+	}
+	ProjectFinish<<<grid,threads>>>( u, v, p, div, dimX, dimY );
+	SetBoundary<<<grid,threads>>>(1, u, bounds, dimX, dimY);
+	SetBoundary<<<grid,threads>>>(2, v, bounds, dimX, dimY);
+}
+
+void vel_step ( float *u, float *v, float *u0, float *v0, float *dens, int *bounds, float visc, float dt ) {
+  AddSource<<<grid,threads>>>( u, u0, dt, dimX, dimY );
+  AddSource<<<grid,threads>>>( v, v0, dt, dimX, dimY );
+
+  // add in vorticity confinement force
+  vorticityConfinement<<<grid,threads>>>(u0, v0, u, v, dimX, dimY);
+  AddSource<<<grid,threads>>>(u, u0, dt, dimX, dimY);
+  AddSource<<<grid,threads>>>(v, v0, dt, dimX, dimY);
+
+  // add in buoyancy force
+  // get average temperature
+  float Tamb = 0.0;
+    getSum<<<grid,threads>>>(v0, Tamb, dimX, dimY);
+    Tamb /= (dimX * dimY);
+  buoyancy<<<grid,threads>>>(v0, dens, Tamb, buoy, dimX, dimY);
+  AddSource<<<grid,threads>>>(v, v0, dt, dimX, dimY);
+
+  SWAP ( u0, u ); 
+  diffuse_step( 1, u, u0, bounds, visc, dt);
+  SWAP ( v0, v ); 
+  diffuse_step( 2, v, v0, bounds, visc, dt);
+
+  proj_step( u, v, u0, v0, bounds);
+
+  SWAP ( u0, u );
+  SWAP ( v0, v );
+  advect_step(1, u, u0, u0, v0, bounds, dt);
+  advect_step(2, v, v0, u0, v0, bounds, dt);
+
+  proj_step( u, v, u0, v0, bounds);
+}
+
 void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
-				  float dt )
+				  float *u, float *v, int *bounds, float dt )
 {
 	// Naive ARD-----------------------
-	AddSource<<<grid,threads>>>(_chemB, _chemB0, dt, dimX, dimY );
+	AddSource<<<grid,threads>>>(_chemB, _chemB0, dt, dimX, dimY);
 	_chemA0 = _chemA;
 	_chemB0 = _chemB;
 	for (int i = 0; i < 10; i++){
-		Diffusion<<<grid,threads>>>(_chemA, laplacian, boundary, dA, dt, dimX, dimY);
+		Diffusion<<<grid,threads>>>(_chemA, laplacian, bounds, dA, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(_chemA, laplacian, dimX, dimY);
+		SetBoundary<<<grid,threads>>>(0, _chemA, bounds, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
-		Diffusion<<<grid,threads>>>(_chemB, laplacian, boundary, dB, dt, dimX, dimY);
+		Diffusion<<<grid,threads>>>(_chemB, laplacian, bounds, dB, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(_chemB, laplacian, dimX, dimY);
+		SetBoundary<<<grid,threads>>>(0, chemB, bounds, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
-		React<<<grid,threads>>>( _chemA, _chemB, boundary, dt, dimX, dimY );
+		React<<<grid,threads>>>( _chemA, _chemB, bounds, dt, dimX, dimY );
+		//SetBoundary<<<grid,threads>>>(0, _chemA, bounds, dimX, dimY);
+		//SetBoundary<<<grid,threads>>>(0, _chemB, bounds, dimX, dimY);
 	}
 
-	//SWAP ( _chemA0, _chemA );
-	//advect_step(0, _chemA, _chemA0, u, v, dt);
-	//SWAP ( _chemB0, _chemB );
-	//advect_step(0, _chemB, _chemB0, u, v, dt);
+	SWAP ( _chemA0, _chemA );
+	advect_step(0, _chemA, _chemA0, u, v, bounds, dt);
+	SWAP ( _chemB0, _chemB );
+	advect_step(0, _chemB, _chemB0, u, v, bounds, dt);
 }
 
 
 ///////////////////////////////////////////////////////////////////////////////
 // Simulate
 ///////////////////////////////////////////////////////////////////////////////
-static void simulate(const TCUDA_ParamInfo **field, const TCUDA_ParamInfo *output){
+static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *output){
 
-	//MakeSource<<<grid,threads>>>((int*)field[0]->data, chemA, dimX, dimY);
+	//MakeSource<<<grid,threads>>>((int*)params[0]->data, chemA, dimX, dimY);
 	//MakeColor<<<grid,threads>>>(chemA, (int*)output->data, dimX, dimY);
 
 	//if (frameNum > 0 && togSimulate) {
-		//get_from_UI(chemA_prev, chemB_prev, u_prev, v_prev);
-		get_from_UI(field, chemA_prev, chemB_prev);
-		//vel_step( u, v, u_prev, v_prev, chemB, visc, dt );
-		//dens_step( field[0], chemA_prev, field[1], chemB_prev, u, v, diff, dt );
-		dens_step( chemA, chemA_prev, chemB, chemB_prev, dt );
+		get_from_UI(params, chemA_prev, chemB_prev, u_prev, v_prev);
+		vel_step( u, v, u_prev, v_prev, chemB, boundary, visc, dt );
+		dens_step( chemA, chemA_prev, chemB, chemB_prev, u, v, boundary, dt );
 		MakeColor<<<grid,threads>>>(chemB, (int*)output->data, dimX, dimY);	
-		//MakeColor<<<grid,threads>>>(chemA, (int*)output[1]->data, dimX, dimY);	
 		//MakeVerticesKernel<<<grid,threads>>>(displayVertPtr, u, v);
 	//}
 
@@ -251,20 +336,14 @@ extern "C"
 			runOnce = false;
 		}
 
-		// Get mouse values
-		// currently naively set to 3rd input
-		printf("\n----------\nMouse values:\n");
-		const TCUDA_ParamInfo *td_mouse = params[2];
-
-		int num_mouse_chans = td_mouse->chop.numChannels;
-		float *mouse = (float*)malloc(sizeof(float)*num_mouse_chans);
-		cudaMemcpy(mouse, (float*)td_mouse->data, sizeof(float)*num_mouse_chans, cudaMemcpyDeviceToHost);
-		for (int i = 0; i < num_mouse_chans; i++) {
-			printf("%s: %d, %f\n", td_mouse->name, mouse[i]);
-		}
-		delete[] mouse;
-		printf("----------\n");
-
+		//// Get mouse values
+		//// currently naively set to 3rd input
+		//printf("\n----------\nMouse values:\n");
+		//const TCUDA_ParamInfo *td_mouse = params[2];
+		//for (int i = 0; i < num_mouse_chans; i++) {
+		//	printf("%s: %d, %f\n", td_mouse->name, mouse[i]);
+		//}
+		//printf("----------\n");
 
 		simulate(params, output);
 
