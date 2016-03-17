@@ -25,6 +25,12 @@ clamp(float i, float min, float max)
 	return i;
 }
 
+__device__ float 
+fitRange(float valueIn, float baseMin, float baseMax, float limitMin, float limitMax) 
+{
+	return ((limitMax - limitMin) * (valueIn - baseMin) / (baseMax - baseMin)) + limitMin;
+}
+
 // Get 1d index from 2d coords
 __device__ int 
 IX(int x, int y) 
@@ -36,7 +42,7 @@ __device__ int
 getX(int w) 
 {
 	int x = threadIdx.x + (blockIdx.x * blockDim.x);
-	if (x >= w) x = 0; if (x < 0) x = w-1;
+	//if (x >= w) x = 0; if (x < 0) x = w-1;
 	return x;
 }
 
@@ -44,7 +50,7 @@ __device__ int
 getY(int h) 
 {
 	int y = threadIdx.y + (blockIdx.y * blockDim.y);
-	if (y >= h) y = 0; if (y < 0) y = h-1;
+	//if (y >= h) y = 0; if (y < 0) y = h-1;
 	return y;
 }
 
@@ -53,7 +59,17 @@ getY(int h)
 __device__ bool
 checkBounds(int *_boundary, int x, int y, int w, int h)
 {
-	if (x > 1 && x < w-1 && y > 1 && y < h-1 && _boundary[IX(x,y)] < 1 ){
+	if (x > 1 && x < w-2 && y > 1 && y < h-2 && _boundary[IX(x,y)] < 1 ){
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+__device__ bool
+checkBounds(int x, int y, int w, int h)
+{
+	if (x > 1 && x < w-2 && y > 1 && y < h-2){
 		return true;
 	}
 	else {
@@ -83,6 +99,16 @@ intToRgba(int pixel, float &r, float &g, float &b, float &a)
 	a = float((pixel>>24)&0xff) / 255.0f;
 }
 
+__device__ void
+rgbaToColor(float *dest, int id, float r, float g, float b, float a)
+{
+	dest[4*id]=b;
+	dest[4*id+1] = g;
+	dest[4*id+2] = r;
+	dest[4*id+3] = a;
+
+}
+
 // Set boundary conditions
 __device__ void set_bnd( int b, int x, int y, float *field, int *boundary, int w, int h) {
 	int sz = w*h;
@@ -101,13 +127,13 @@ __device__ void set_bnd( int b, int x, int y, float *field, int *boundary, int w
 	if (y==0)   field[id] = b==2 ? -1*field[IX(x,1)] : -1 * field[IX(x,1)];
 	if (y==h-1) field[id] = b==2 ? -1*field[IX(x,h-2)] : -1 * field[IX(x,h-2)];
 
-	if (outOfBnd){
-		field[id] = -1*field[id];
-		field[IX(x+1,y)] = -1*field[IX(x+1,y)];
-		field[IX(x-1,y)] = -1*field[IX(x-1,y)];
-		field[IX(x,y+1)] = -1*field[IX(x,y+1)];
-		field[IX(x,y-1)] = -1*field[IX(x,y-1)];
-	}
+	//if (outOfBnd){
+	//	field[id] = -1*field[id];
+	//	field[IX(x+1,y)] = -1*field[IX(x+1,y)];
+	//	field[IX(x-1,y)] = -1*field[IX(x-1,y)];
+	//	field[IX(x,y+1)] = -1*field[IX(x,y+1)];
+	//	field[IX(x,y-1)] = -1*field[IX(x,y-1)];
+	//}
 
 	if (id == 0)      field[id] = 0.5*(field[IX(1,0)]+field[IX(0,1)]);  // southwest
 	if (id == sz-w) field[id] = 0.5*(field[IX(1,h-1)]+field[IX(0, h-2)]); // northwest
@@ -181,9 +207,9 @@ __global__ void GetFromUI ( float * field, float value, int x_coord, int y_coord
 	int y = getY(h);
 	int id = IX(x,y);
 
-	if (x>x_coord-2 && x<x_coord+2 && y>y_coord-2 && y<y_coord+2){
+	if (x>x_coord-5 && x<x_coord+5 && y>y_coord-5 && y<y_coord+5){
 		// if (x == x_coord && y==y_coord){
-		field[id] = value;
+		field[id] += value;
 	}
 	else return;
 }
@@ -202,6 +228,7 @@ MakeSource(int *src, float *dest, int w, int h)
 	dest[id] = r;
 }
 
+// *!* This is currently only grabbing the red channel *!*
 __global__ void
 MakeSource(int *src, int *dest, int w, int h)
 {
@@ -237,166 +264,288 @@ MakeColor(float *src, int *dest, int w, int h)
 	//dest[id] = rgbaToInt(1.0, src[id], src[id], 1.0);
 }
 
-__global__ void LinSolve( float *field, float *field0, float a, float c, int w, int h) {
+__global__ void
+MakeColor(float *src0, float *src1, float *src2, float *dest, int w, int h)
+{
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
-	field[id] = (float)(field0[id] + ((float)a*(field[IX(x-1,y)] + field[IX(x+1,y)] + field[IX(x,y-1)] + field[IX(x,y+1)]))) / c;
+	rgbaToColor(dest, id, src0[id], src1[id], src2[id], 1.0);
 }
 
-/**
- * Calculate the buoyancy force as part of the velocity solver.
- * Fbuoy = -a*d*Y + b*(T-Tamb)*Y where Y = (0,1). The constants
- * a and b are positive with appropriate (physically meaningful)
- * units. T is the temperature at the current cell, Tamb is the
- * average temperature of the fluid grid. The density d provides
- * a mass that counteracts the buoyancy force.
- *
- * In this simplified implementation, we say that the tempterature
- * is synonymous with density (since smoke is *hot*) and because
- * there are no other heat sources we can just use the density
- * field instead of a new, seperate temperature field.
- *
- * @param Fbuoy Array to store buoyancy force for each cell.
- **/
 
-__global__ void buoyancy(float *Fbuoy, float *dens, float _Tamb, float Y, int w, int h)
+__global__ void
+MakeColor(float *src0, float *src1, float *src2, float *src3, float *dest, int w, int h)
 {
-  int x = getX(w);
-  int y = getY(h);
-  int id = IX(x,y);
-  float a = 0.000625f;
-  float b = 0.025f;
-  Fbuoy[id] = a * dens[id] + -b * (dens[id] - _Tamb) * Y;
-  //Fbuoy[id] = a * dens[id] + -b * (dens[id] - _Tamb);
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	rgbaToColor(dest, id, src0[id], src1[id], src2[id], src3[id]);
 }
 
 
-/**
- * Calculate the curl at position (i, j) in the fluid grid.
- * Physically this represents the vortex strength at the
- * cell. Computed as follows: w = (del x U) where U is the
- * velocity vector at (i, j).
- *
- * @param i The x index of the cell.
- * @param j The y index of the cell.
- **/
+__global__ void TEST (float *test, int w, int h)
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	//test[0][id] = .5;
+	//test[1][id] = .5;
+	test[id] = .5;
+}
+
+__device__ float
+bilerp(float *src, float i, float j, int w, int h)
+{
+	int i0, j0, i1, j1;
+	float s0, t0, s1, t1;
+
+	// fit bounds
+	if (i < 0.5f) i = 0.5f;
+	if (i > float(w)-2.0+0.5f) i = float(w)-2.0+0.5f;
+	if (j < 0.5f) j = 0.5f;
+	if (j > float(h)-2.0+0.5f) j = float(h)-2.0+0.5f;
+		
+	// bilinear interpolation
+	i0 = int(i);
+	i1 = i0+1;		
+	j0 = int(j);
+	j1 = j0+1;
+		
+	s1 = (float)i-i0;
+	s0 = (float)1-s1;
+	t1 = (float)j-j0;
+	t0 = (float)1-t1;
+
+	return (float)	s0*(t0*src[IX(i0,j0)] + t1*src[IX(i0,j1)])+
+			 		s1*(t0*src[IX(i1,j0)] + t1*src[IX(i1,j1)]);
+}
+
+__global__ void Advect (float *vel_u, float *vel_v, float *src_u, float *src_v,
+						int *boundary, float *dest_u, float *dest_v,
+						float timeStep, float diff, int w, int h) 
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+		float dt0 = (float)timeStep * float(w-2);
+		float i = float(x) - dt0 * vel_u[id];
+		float j = float(y) - dt0 * vel_v[id];
+
+		dest_u[id] = diff * bilerp(src_u, i, j, w, h);
+		dest_v[id] = diff * bilerp(src_v, i, j, w, h);
+	}
+
+	if (!checkBounds(boundary, x, y, w, h)) {
+		dest_u[id] = 0.0;
+		dest_v[id] = 0.0;
+	}
+
+}
+
+__global__ void Advect (float *vel_u, float *vel_v, float *src, int *boundary, float *dest,
+						float timeStep, float diff, bool skipBilerp, int w, int h) 
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+		float dt0 = (float)timeStep * float(w-2);
+		float i = float(x) - dt0 * vel_u[id];
+		float j = float(y) - dt0 * vel_v[id];
+
+		dest[id] = diff * bilerp(src, i, j, w, h);
+
+		//if (skipBilerp) {
+		//	int c_x = x - timeStep * vel_u[id];
+		//	int c_y = y - timeStep * vel_v[id];
+		//	dest[id] = src[IX(c_x, c_y)];
+		//}
+	}
+
+	if (!checkBounds(boundary, x, y, w, h)) {
+		dest[id] = 0.0;
+	}
+}
 
 __device__ float curl(int i, int j, float *u, float *v)
 {
-  float du_dy = (u[IX(i, j+1)] - u[IX(i, j-1)]) * 0.5f;
-  float dv_dx = (v[IX(i+1, j)] - v[IX(i-1, j)]) * 0.5f;
+	float du_dy = (u[IX(i, j+1)] - u[IX(i, j-1)]) * 0.5f;
+	float dv_dx = (v[IX(i+1, j)] - v[IX(i-1, j)]) * 0.5f;
 
-  // return du_dy - dv_dx;
-  return du_dy - dv_dx;
+	return du_dy - dv_dx;
 }
 
-
-/**
- * Calculate the vorticity confinement force for each cell
- * in the fluid grid. At a point (i,j), Fvc = N x w where
- * w is the curl at (i,j) and N = del |w| / |del |w||.
- * N is the vector pointing to the vortex center, hence we
- * add force perpendicular to N.
- *
- * @param Fvc_x The array to store the x component of the
- *        vorticity confinement force for each cell.
- * @param Fvc_y The array to store the y component of the
- *        vorticity confinement force for each cell.
- **/
-
-__global__ void vorticityConfinement(float *Fvc_x, float *Fvc_y, float *u, float *v, int w, int h)
+__global__ void vorticityConfinement(float *u, float *v, float *Fvc_x, float *Fvc_y, int *_boundary, 
+								     float dt, int w, int h)
 {
-  int x = getX(w);
-  int y = getY(h);
-  int id = IX(x,y);
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
 
-  float dw_dx, dw_dy;
-  float length;
-  float vel;
+	float dw_dx, dw_dy;
+	float length;
+	float vel;
 
-    if (x>0 && x<w-1 && y>0 && y<h-1){
-    // Calculate magnitude of curl(u,v) for each cell. (|w|)
-    // curl[I(i, j)] = Math.abs(curl(i, j));
+	//if (x>1 && x<w-2 && y>1 && y<h-2){
+	if (checkBounds(_boundary, x, y, w, h)) {
 
-      // Find derivative of the magnitude (n = del |w|)
-      dw_dx = ( abs(curl(x+1,y, u, v)) - abs(curl(x-1,y, u, v)) ) * 0.5f;
-      dw_dy = ( abs(curl(x,y+1, u, v)) - abs(curl(x,y-1, u, v)) ) * 0.5f;
+		// Calculate magnitude of curl(u,v) for each cell. (|w|)
+		// curl[I(i, j)] = Math.abs(curl(i, j));
 
-      // Calculate vector length. (|n|)
-      // Add small factor to prevent divide by zeros.
-      length = sqrt(dw_dx * dw_dx + dw_dy * dw_dy);
-      if (length == 0.0) length -= 0.000001f;
-      // N = ( n/|n| )
-      dw_dx /= length;
-      dw_dy /= length;
+		// Find derivative of the magnitude (n = del |w|)
+		dw_dx = ( abs(curl(x+1,y, u, v)) - abs(curl(x-1,y, u, v)) ) * 0.5f;
+		dw_dy = ( abs(curl(x,y+1, u, v)) - abs(curl(x,y-1, u, v)) ) * 0.5f;
 
-      vel = curl(x, y, u, v);
+		// Calculate vector length. (|n|)
+		// Add small factor to prevent divide by zeros.
+		length = sqrt(dw_dx * dw_dx + dw_dy * dw_dy);
+		if (length == 0.0) length -= 0.000001f;
+		// N = ( n/|n| )
+		dw_dx /= length;
+		dw_dy /= length;
 
-      // N x w
-      Fvc_x[id] = dw_dy * -vel;
-      Fvc_y[id] = dw_dx *  vel;
-    }
+		vel = curl(x, y, u, v);
 
+		// N x w
+		// 0.5 = curl amount
+		Fvc_x[id] += (dw_dy * -vel * dt * 0.5);
+		Fvc_y[id] += (dw_dx *  vel * dt * 0.5);
+	}
 }
 
 
-__global__ void Advect ( float *field, float *field0, float *u, float *v, float dt, int w, int h ) {
-  int i = getX(w);
-  int j = getY(h);
-  int id = IX(i,j);
+__global__ void ApplyBuoyancy( float *vel_u, float *vel_v, float *temp, float *dens, 
+							   float *dest_u, float *dest_v, float ambientTemp, float dt, int w, int h)
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+	
+	if (checkBounds(x, y, w, h)) {
+		dest_u[id] = vel_u[id]; 
+		dest_v[id] = vel_v[id]; 
+	
+		float T = temp[id];
+		float Sigma = 1.0;
+		float Kappa = 0.05;
+		if (T > ambientTemp) {
+			float D = dens[id];
+			float dt0 = (float)dt;
 
-  int i0, j0, i1, j1;
-  float x, y, s0, t0, s1, t1, dt0;
+			dest_u[id] += (dt0 * (T - ambientTemp) * Sigma - D * Kappa) * 0;
+			dest_v[id] += (dt0 * (T - ambientTemp) * Sigma - D * Kappa) * .01;
+		}
+	}
 
-  dt0 = (float)dt*float(w-2);
-
-  // if (x>0 && x<DIM-1 && y>0 && y<DIM-1){
-    x = (float)i - dt0 * u[id];
-    y = (float)j - dt0 * v[id];
-
-    if (x < 0.5f) x = 0.5f;
-    if (x > (float)(w-2.0)+0.5f) x = (float)(w-2.0)+0.5f;
-    i0 = (int)x;
-    i1 = i0+1;
-
-    if (y < 0.5f) y = 0.5f;
-    if (y > (float)(h-2.0)+0.5f) y = (float)(h-2.0)+0.5f;
-    j0 = (int)y;
-    j1 = j0+1;
-
-    s1 = (float)x-i0;
-    s0 = (float)1-s1;
-    t1 = (float)y-j0;
-    t0 = (float)1-t1;
-
-    field[id] = (float)s0*(t0*field0[IX(i0,j0)] + t1*field0[IX(i0,j1)])+
-			 				         s1*(t0*field0[IX(i1,j0)] + t1*field0[IX(i1,j1)]);
-  // }
 }
 
-__global__ void Project ( float *u, float *v, float *p, float *div, int w, int h ) {
-  int x = getX(w);
-  int y = getY(h);
-  int id = IX(x,y);
+__global__ void ComputeDivergence( float *u, float *v, int *boundary, float *dest, int w, int h )
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
 
-  if (x>0 && x<w-1 && y>0 && y<h-1){
-    div[id] = -0.5 *(u[IX(x+1,y)] - u[IX(x-1,y)] + v[IX(x,y+1)] - v[IX(x,y-1)]) / float(w-2);
-    p[id] = 0;
-  }
+	if (x > 2 && x < w-2 && y > 2 && y < h-2){
+		float cellSize = 1.0;
+		//dest[id] = (0.5 / cellSize) * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] );
+		//dest[id] = 0.5 * ( (u[IX(x+1, y)] - u[IX(x-1, y)]) + (v[IX(x, y+1)] - v[IX(x, y-1)]) ) ;
+		dest[id] = 0.5 * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] ) / float(w-2);
+	}
 }
 
-__global__ void ProjectFinish ( float *u, float *v, float *p, float *div, int w, int h ) {
-  int x = getX(w);
-  int y = getY(h);
-  int id = IX(x,y);
+__global__ void Jacobi( float *p, float *divergence, int *boundary, float *dest, int w, int h )
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
 
-  if (x>0 && x<w-1 && y>0 && y<h-1){
-    u[id] -= (0.5 * float(w-2) * (p[IX(x+1,y)] - p[IX(x-1,y)]));
-    v[id] -= (0.5 * float(h-2) * (p[IX(x,y+1)] - p[IX(x,y-1)]));
-  }
+	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+		// Find neighboring pressure:
+		float pN = p[IX(x, y+1)];
+		float pS = p[IX(x, y-1)];
+		float pE = p[IX(x+1, y)];
+		float pW = p[IX(x-1, y)];
+		float pC = p[id];
+
+		// Find neighboring obstacles:
+		int oN = boundary[IX(x, y+1)];
+		int oS = boundary[IX(x, y-1)];
+		int oE = boundary[IX(x+1, y)];
+		int oW = boundary[IX(x-1, y)];
+
+		// Use center pressure for solid cells:
+		if (oN > 0) pN = pC;
+		if (oS > 0) pS = pC;
+		if (oE > 0) pE = pC;
+		if (oW > 0) pW = pC;
+
+		float cellSize = 1.0;
+		//float Alpha = -cellSize * cellSize;
+		float Alpha = -1.0;
+		float bC = divergence[id];
+		float InverseBeta = .25;
+		dest[id] = (pW + pE + pS + pN + Alpha * bC) * InverseBeta;	
+		//dest[id] = (divergence[id] + (1.0*(p[IX(x+1,y)] + p[IX(x-1,y)] + p[IX(x,y+1)] + p[IX(x,y-1)]))) * .25;
+	}
 }
+
+__global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, int *boundary, 
+								  float *dest_u, float *dest_v, int w, int h) 
+{
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+		// Find neighboring pressure:
+		float pN = p[IX(x, y+1)];
+		float pS = p[IX(x, y-1)];
+		float pE = p[IX(x+1, y)];
+		float pW = p[IX(x-1, y)];
+		float pC = p[id];
+		
+		// Find neighboring obstacles:
+		int oN = boundary[IX(x, y+1)];
+		int oS = boundary[IX(x, y-1)];
+		int oE = boundary[IX(x+1, y)];
+		int oW = boundary[IX(x-1, y)];
+
+		// Use center pressure for solid cells:
+		float obstV = 0.0;
+		float vMask = 1.0;
+		
+		if (oN > 0) { pN = pC; vMask = 0.0; }
+		if (oS > 0) {pS = pC; vMask = 0.0; }
+		if (oE > 0) {pE = pC; vMask = 0.0; }
+		if (oW > 0) {pW = pC; vMask = 0.0; }
+	    
+		// Enforce the free-slip boundary condition:
+		float old_u = vel_u[id];
+		float old_v = vel_v[id];
+
+		// GradientScale is 1.125 / CellSize
+		float cellSize = 1.0;
+		//float GradientScale = 1.125 / cellSize;
+		float GradientScale = 0.5 * float(w-2);
+		float grad_u = (pE - pW) * GradientScale;
+		float grad_v = (pN - pS) * GradientScale;
+		
+		float new_u = old_u - grad_u;
+		float new_v = old_v - grad_v;
+
+		dest_u[id] = (vMask * new_u) + obstV;
+		dest_v[id] = (vMask * new_v) + obstV;
+	
+	}
+}
+
 
 __global__ void 
 Diffusion(float *_chem, float *_lap, int *_boundary, float _difConst, float dt, int w, int h) 
@@ -405,20 +554,21 @@ Diffusion(float *_chem, float *_lap, int *_boundary, float _difConst, float dt, 
 	int y = getY(h);
 	int id = IX(x,y);
 
-	//if (checkBounds(_boundary, x, y, w, h)) {
-	//	int n1 = id + 1;
-	//	int n2 = id - 1;
-	//	int n3 = id + w;
-	//	int n4 = id - w;
+	// have to do this check for non-powers of 2 to work...?
+	if (checkBounds(_boundary, x, y, w, h)) {
 
 		// constants
 		float xLength = (float)x/100.0;
 		float dx = (float)xLength/(float)x;
 		float alpha = (float)(_difConst * dt / (float)(dx*dx));
 
+		int n1 = getX(x-1);
+		int n2 = getX(x+1);
+		int n3 = getY(y-1);
+		int n4 = getY(y+1);
 		_lap[id] = (float)(-4.0f * _chem[id]) + (float)(_chem[IX(x+1,y)] + _chem[IX(x-1,y)] + _chem[IX(x,y+1)] + _chem[IX(x,y-1)]);
 		_lap[id] = (float)_lap[id]*alpha;
-	//}
+	}
 }
 
 __global__ void 
@@ -431,14 +581,26 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, int *_boundary, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, int *F_input, float *rd, int *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
-	//if (checkBounds(_boundary, x, y, w, h)) {
-		float F = 0.05;
-		float k = 0.0675;
+	if (checkBounds(_boundary, x, y, w, h)) {
+		//float F = 0.05;
+		//float k = 0.0675;
+		//float F = 0.0140;
+		//float k = 0.0490;
+		//float F = 0.0545;
+		//float k = 0.062;
+		//float F = F_input[id]&0xff/255;
+		//F = fitRange(F, 0.0, 1.0, 0.014, 0.066);
+		//
+		//float k = 1.0 - (F_input[id]&0xff/255);
+		//k = fitRange(k, 0.0, 1.0, 0.05, 0.068); 
+		float F = rd[0];
+		float k = rd[1];
+		
 		float A = _chemA[id];
 		float B = _chemB[id];
 
@@ -446,45 +608,9 @@ __global__ void React( float *_chemA, float *_chemB, int *_boundary, float dt, i
 		float reactionB = A * (B*B) - (F+k)*B;
 		_chemA[id] += (dt * reactionA);
 		_chemB[id] += (dt * reactionB);
-	//}
-	//else {
-		//_chemA[id] = 0.0;
-		//_chemB[id] = 0.0;
-	//}
-}
-
-__global__ void
-sampleKernel( int* src, int inw, int inh, int *dest, int w, int h )
-{
-	int tx = threadIdx.x;
-	int ty = threadIdx.y;
-	int bw = blockDim.x;
-	int bh = blockDim.y;
-	int x = blockIdx.x*bw + tx;
-	int y = blockIdx.y*bh + ty;
-	
-	// If the resolution isn't a multiple of the grid/thread size, or the resolutions don't match
-	// we need to make sure we arn't reading or writting beyond the bounds of the data 
-	if (x >= inw || y >= inh)
-	{
-		if (x < w && y < h)
-			dest[y * w + x] = rgbaToInt(0.0f, 0.0f, 0.0f, 1.0);
-		return;
 	}
-	else if (x >= w || y >= h)
-	{
-		return;
-	}
-	else
-	{
-		int pixel = src[y * inw + x];
-		float r,g,b,a;
-		intToRgba(pixel, r, g, b, a);
-		
-		// Simple monochrome operation
-		float v = r*0.3f + g*0.6f + b*0.1f;
-		dest[y * w + x] = rgbaToInt(v, v, v, a);
+	else {
+		_chemA[id] *= -1.0;
+		_chemB[id] *= -1.0;
 	}
 }
-
-

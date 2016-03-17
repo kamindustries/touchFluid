@@ -67,7 +67,7 @@ tCudaGetTOPOutputInfo(const TCUDA_NodeInfo *info, TCUDA_TOPOutputInfo *oinfo)
 	oinfo->height = 512;
 	oinfo->aspectX = 1;
 	oinfo->aspectY = 1;
-	oinfo->pixelFormat = TCUDA_PIXEL_FORMAT_RGBA8;
+	oinfo->pixelFormat = TCUDA_PIXEL_FORMAT_RGBA32;
 
 	return false;
 }
@@ -85,7 +85,7 @@ DLLEXPORT void
 tCudaGetTOPKernelOutputInfo(const TCUDA_NodeInfo *info, TCUDA_TOPKernelOutputInfo *oinfo)
 {
 	oinfo->chanOrder = TCUDA_CHAN_BGRA;
-	oinfo->dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
+	oinfo->dataFormat = TCUDA_DATA_FORMAT_FLOAT;
 }
 
 // This function will be called once for every param that could potentially be passed into the cuda function
