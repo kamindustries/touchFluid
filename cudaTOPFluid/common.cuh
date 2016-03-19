@@ -10,15 +10,9 @@
 #include <driver_types.h>
 #include "defines.h"
 
-extern bool runOnce;
 extern int dimX, dimY, size;
-extern float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
-extern float *u, *u_prev, *v, *v_prev;
 
-// incoming data
-extern float *mouse, *mouse_old;
-extern int *boundary;
-
-
+extern bool hasEnding (std::string const &fullString, std::string const &ending);
+extern bool hasBeginning (std::string const &fullString, std::string const &beginning);
 
 #endif 

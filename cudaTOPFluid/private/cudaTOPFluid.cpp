@@ -85,6 +85,7 @@ DLLEXPORT void
 tCudaGetTOPKernelOutputInfo(const TCUDA_NodeInfo *info, TCUDA_TOPKernelOutputInfo *oinfo)
 {
 	oinfo->chanOrder = TCUDA_CHAN_BGRA;
+	//oinfo->dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
 	oinfo->dataFormat = TCUDA_DATA_FORMAT_FLOAT;
 }
 
@@ -99,15 +100,30 @@ tCudaGetParamInfo(const TCUDA_NodeInfo *info, const TCUDA_ParamRequest *request,
 #ifdef _DEBUG
 	//printf("Got Param Info Request for %s, input %d \n", request->name, request->inputNumber);
 #endif
-	if (request->dataType == TCUDA_DATA_TYPE_TOP || request->dataType == TCUDA_DATA_TYPE_CHOP)
-	//if (request->dataType == TCUDA_DATA_TYPE_TOP && request->inputNumber == 0)
+
+	// Only send data if it's a TOP or a CHOP
+	if (request->dataType == TCUDA_DATA_TYPE_TOP)
 	{
-		reqResult->top.dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
+		// If there's a _f at the end of the name, allocate TOP as a float, else allocate as int
+		if (hasEnding(request->name, "_f"))
+		{
+			reqResult->top.dataFormat = TCUDA_DATA_FORMAT_FLOAT;
+			return true;
+		}
+		else 
+		{
+			reqResult->top.dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
+			return true;
+		}
+	}
+
+	else if (request->dataType == TCUDA_DATA_TYPE_CHOP) 
+	{
+		//reqResult->chop.dataLocation = TCUDA_DATA_LOCATION_DEVICE;
 		return true;
 	}
-	else // We are only interested in the first TOP right now
-		 // we tell Touch that we arn't interested in other params or TOPs.
-		 
+
+	else 
 	{
 		return false;
 	}

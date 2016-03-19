@@ -581,7 +581,7 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, int *F_input, float *rd, int *_boundary, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, float *F_input, float *rd, int *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
