@@ -11,16 +11,15 @@ dim3 grid, threads;
 bool runOnce = true;
 int dimX, dimY, size;
 float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
-float *u, *u_prev, *v, *v_prev;
 float *vel[2], *vel_prev[2];
 float *pressure, *pressure_prev;
 float *temperature, *temperature_prev;
 float *density, *density_prev;
 float *divergence;
+int *boundary;
 
 // incoming data
 float *mouse, *mouse_old;
-int *boundary;
 const TCUDA_ParamInfo *mouseCHOP;
 const TCUDA_ParamInfo *boundaryTOP;
 const TCUDA_ParamInfo *F_TOP;
@@ -50,8 +49,6 @@ char* TCUDA_FogType_enum[];
 char* TCUDA_MemType_enum[];
 
 // ffmpeg -i [input] -c:v libvpx -b:v 1M [output].webm
-
-
 bool hasEnding (std::string const &fullString, std::string const &ending) {
     if (fullString.length() >= ending.length()) {
         return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
@@ -60,6 +57,16 @@ bool hasEnding (std::string const &fullString, std::string const &ending) {
     }
 }
 
+bool hasBeginning (std::string const &fullString, std::string const &beginning) {
+	if (fullString.find(beginning) != std::string::npos )
+		return true;
+	else 
+		return false;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Print connected node information
+///////////////////////////////////////////////////////////////////////////////
 void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("\n----------\nINCOMING PARAMETERS:\n");
 	printf("%d nodes connected\n\n", nparams);
@@ -83,21 +90,24 @@ void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("----------\n\n");
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Find CHOPS
+///////////////////////////////////////////////////////////////////////////////
 void findCHOPS(const int nparams, const TCUDA_ParamInfo **params){
 	for (int i = 0; i < nparams; i++){
-		if (hasEnding(params[i]->name, "mouseOUT")){
+		if (hasBeginning(params[i]->name, "OUT_mouse")){
 			mouseCHOP = params[i];
 			printf("findCHOPS(): found mouse: %s\n", mouseCHOP->name);
 		}
-		if (hasEnding(params[i]->name, "boundaryOUT")){
+		if (hasBeginning(params[i]->name, "OUT_boundary")){
 			boundaryTOP = params[i];
 			printf("findCHOPS(): found Boundary TOP: %s\n", boundaryTOP->name);
 		}
-		if (hasEnding(params[i]->name, "FOUT")){
+		if (hasBeginning(params[i]->name, "OUT_rdF")){
 			F_TOP = params[i];
 			printf("findCHOPS(): found F TOP: %s\n", F_TOP->name);
 		}
-		if (hasEnding(params[i]->name, "rdOUT")){
+		if (hasBeginning(params[i]->name, "OUT_rdCHOP")){
 			rdCHOP = params[i];
 			printf("findCHOPS(): found rd CHOP: %s\n", rdCHOP->name);
 		}
@@ -105,6 +115,9 @@ void findCHOPS(const int nparams, const TCUDA_ParamInfo **params){
 
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Set up global variables
+///////////////////////////////////////////////////////////////////////////////
 void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_output)
 {
 	// Set container dimensions to whatever the incoming TOP is set to
@@ -113,7 +126,7 @@ void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_outp
 	size = dimX * dimY;
 
 	threads = dim3(16,16);
-	grid.x = (dimX + threads.x - 1) / threads.x; //replace with dimX, dimY
+	grid.x = (dimX + threads.x - 1) / threads.x;
 	grid.y = (dimY + threads.y - 1) / threads.y;
 	
 	printf("-- DIMENSIONS: %d x %d --\n", dimX, dimY);
@@ -129,13 +142,11 @@ void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_outp
 	printf("initVariables(): done.\n");
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Allocate GPU memory
+///////////////////////////////////////////////////////////////////////////////
 void initCUDA() 
 {
-	cudaMalloc((void**)&u, sizeof(float)*size );
-	cudaMalloc((void**)&u_prev, sizeof(float)*size );
-	cudaMalloc((void**)&v, sizeof(float)*size );
-	cudaMalloc((void**)&v_prev, sizeof(float)*size );
-
 	cudaMalloc((void**)&chemA, sizeof(float)*size);
 	cudaMalloc((void**)&chemA_prev, sizeof(float)*size);
 	cudaMalloc((void**)&chemB, sizeof(float)*size);
@@ -159,14 +170,11 @@ void initCUDA()
 	printf("initCUDA(): Allocated GPU memory.\n");
 }
 
-
+///////////////////////////////////////////////////////////////////////////////
+// Initialize GPU arrays
+///////////////////////////////////////////////////////////////////////////////
 void initArrays() 
 {
-  ClearArray<<<grid,threads>>>(u, 0.0, dimX, dimY);
-  ClearArray<<<grid,threads>>>(u_prev, 0.0, dimX, dimY);
-  ClearArray<<<grid,threads>>>(v, 0.0, dimX, dimY);
-  ClearArray<<<grid,threads>>>(v_prev, 0.0, dimX, dimY);
-
   for (int i=0; i<2; i++){
 	  ClearArray<<<grid,threads>>>(vel[i], 0.0, dimX, dimY);
 	  ClearArray<<<grid,threads>>>(vel_prev[i], 0.0, dimX, dimY);
@@ -190,6 +198,9 @@ void initArrays()
   printf("initArrays(): Initialized GPU arrays.\n");
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Initialize
+///////////////////////////////////////////////////////////////////////////////
 void initialize(const int _nparams, const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_output)
 {
 	printNodeInfo(_nparams, _params);
@@ -200,6 +211,9 @@ void initialize(const int _nparams, const TCUDA_ParamInfo **_params, const TCUDA
 	printf("initialize(): done.\n");
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Get from UI
+///////////////////////////////////////////////////////////////////////////////
 void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, float *_u, float *_v) 
 {
 	ClearArray<<<grid,threads>>>(chemA_prev, 1.0, dimX, dimY);
@@ -256,6 +270,9 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	return;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Density step
+///////////////////////////////////////////////////////////////////////////////
 void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 				  float *u, float *v, int *bounds, float dt )
 {
@@ -277,7 +294,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
 		for (int j = 0; j < 1; j++){
-		React<<<grid,threads>>>( _chemA, _chemB, (int*)F_TOP->data, (float*)rdCHOP->data, bounds, dt, dimX, dimY );
+		React<<<grid,threads>>>( _chemA, _chemB, (float*)F_TOP->data, (float*)rdCHOP->data, bounds, dt, dimX, dimY );
 		
 		}
 	}
@@ -300,56 +317,53 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 ///////////////////////////////////////////////////////////////////////////////
 static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *output){
 
-	//if (frameNum > 0 && togSimulate) {
 
-		// Velocity advection
-		Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], vel_prev[0], vel_prev[1],
-								 boundary, vel[0], vel[1], 
-								 dt, .9995, dimX, dimY);
-		SWAP(vel_prev[0], vel[0]);
-		SWAP(vel_prev[1], vel[1]);
+	// Velocity advection
+	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], vel_prev[0], vel_prev[1],
+								boundary, vel[0], vel[1], 
+								dt, .9995, dimX, dimY);
+	SWAP(vel_prev[0], vel[0]);
+	SWAP(vel_prev[1], vel[1]);
 
-		// Temperature advection
-		Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, boundary, temperature,
-								dt, .99, false, dimX, dimY);
-		SWAP(temperature_prev, temperature);
+	// Temperature advection
+	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, boundary, temperature,
+							dt, .99, false, dimX, dimY);
+	SWAP(temperature_prev, temperature);
 
-		// Vorticity Confinement
-		vorticityConfinement<<<grid,threads>>>( vel[0], vel[1], vel_prev[0], vel_prev[1], 
-												boundary, dt, dimX, dimY);
+	// Vorticity Confinement
+	vorticityConfinement<<<grid,threads>>>( vel[0], vel[1], vel_prev[0], vel_prev[1], 
+											boundary, dt, dimX, dimY);
 		
-		float Tamb = 0.0;
-		getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
-		Tamb /= float(dimX * dimY);
-		ApplyBuoyancy<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, chemB_prev,
-										vel[0], vel[1], Tamb, dt, dimX, dimY);
-		SWAP(vel_prev[0], vel[0]);
-		SWAP(vel_prev[1], vel[1]);
+	float Tamb = 0.0;
+	getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
+	Tamb /= float(dimX * dimY);
+	ApplyBuoyancy<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, chemB_prev,
+									vel[0], vel[1], Tamb, dt, dimX, dimY);
+	SWAP(vel_prev[0], vel[0]);
+	SWAP(vel_prev[1], vel[1]);
 
-		get_from_UI(params, temperature_prev, chemB_prev, vel_prev[0], vel_prev[1]);
+	get_from_UI(params, temperature_prev, chemB_prev, vel_prev[0], vel_prev[1]);
 
-		dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], boundary, dt );
-
-
-		ComputeDivergence<<<grid,threads>>>( vel_prev[0], vel_prev[1], boundary, divergence, dimX, dimY );
-
-		ClearArray<<<grid,threads>>>(pressure_prev, 0.0, dimX, dimY);
-		for (int i=0; i<30; i++){
-			Jacobi<<<grid,threads>>>(pressure_prev, divergence, boundary, pressure, dimX, dimY);
-			SWAP(pressure_prev, pressure);
-		}
-
-		SubtractGradient<<<grid,threads>>>( vel_prev[0], vel_prev[1], pressure_prev, boundary, 
-											vel[0], vel[1], dimX, dimY);
-		SWAP(vel_prev[0], vel[0]);
-		SWAP(vel_prev[1], vel[1]);
+	dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], boundary, dt );
 
 
+	ComputeDivergence<<<grid,threads>>>( vel_prev[0], vel_prev[1], boundary, divergence, dimX, dimY );
+
+	ClearArray<<<grid,threads>>>(pressure_prev, 0.0, dimX, dimY);
+	for (int i=0; i<30; i++){
+		Jacobi<<<grid,threads>>>(pressure_prev, divergence, boundary, pressure, dimX, dimY);
+		SWAP(pressure_prev, pressure);
+	}
+
+	SubtractGradient<<<grid,threads>>>( vel_prev[0], vel_prev[1], pressure_prev, boundary, 
+										vel[0], vel[1], dimX, dimY);
+	SWAP(vel_prev[0], vel[0]);
+	SWAP(vel_prev[1], vel[1]);
 
 
-		MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
 
-	//}
+	MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
+
 
 }
 
@@ -371,17 +385,7 @@ extern "C"
 			runOnce = false;
 		}
 
-		//// Get mouse values
-		//// currently naively set to 3rd input
-		//printf("\n----------\nMouse values:\n");
-		//const TCUDA_ParamInfo *td_mouse = params[2];
-		//for (int i = 0; i < num_mouse_chans; i++) {
-		//	printf("%s: %d, %f\n", td_mouse->name, mouse[i]);
-		//}
-		//printf("----------\n");
-
 		simulate(params, output);
-
 
 		return true;
 	}
