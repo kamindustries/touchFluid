@@ -349,7 +349,7 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 	// Apply impulses
 	get_from_UI(params, temperature_prev, chemB_prev, vel_prev[0], vel_prev[1]);
 
-	// Density advection
+	// Reaction-Diffusion and Density advection
 	dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], (float*)boundaryTOP->data, dt );
 
 	// Compute divergence
