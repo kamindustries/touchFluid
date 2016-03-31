@@ -16,7 +16,7 @@ float *pressure, *pressure_prev;
 float *temperature, *temperature_prev;
 float *density, *density_prev;
 float *divergence;
-int *boundary;
+float *boundary;
 
 // incoming data
 float *mouse, *mouse_old;
@@ -152,7 +152,7 @@ void initCUDA()
 	cudaMalloc((void**)&chemB, sizeof(float)*size);
 	cudaMalloc((void**)&chemB_prev, sizeof(float)*size);
 	cudaMalloc((void**)&laplacian, sizeof(float)*size);
-	cudaMalloc((void**)&boundary, sizeof(int)*size);
+	cudaMalloc((void**)&boundary, sizeof(float)*size * 4);
 
 	for (int i=0; i<2; i++){
 		cudaMalloc((void**)&vel[i], sizeof(int)*size);
@@ -227,8 +227,12 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	//MakeSource<<<grid,threads>>>((int*)params[0]->data, _chemB0, dimX, dimY);
 	
 	// Use second input as boundary conditions
-	MakeSource<<<grid,threads>>>((int*)boundaryTOP->data, boundary, dimX, dimY);
-
+	//boundary = (float*)boundaryTOP->data;
+	//MakeSource<<<grid,threads>>>((float*)boundaryTOP->data, boundary, dimX, dimY);
+	
+	// Apply obstacle velocity
+	GetFromUI<<<grid,threads>>>(_u, _v, (float*)boundaryTOP->data, dimX, dimY);
+	
 	// Update mouse info
 	cudaMemcpy(mouse, (float*)mouseCHOP->data, sizeof(float)*mouseCHOP->chop.numChannels, cudaMemcpyDeviceToHost);
 	
@@ -274,7 +278,7 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 // Density step
 ///////////////////////////////////////////////////////////////////////////////
 void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
-				  float *u, float *v, int *bounds, float dt )
+				  float *u, float *v, float *bounds, float dt )
 {
 
 	// Naive ARD-----------------------
@@ -282,7 +286,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 	//AddSource<<<grid,threads>>>(_chemA, _chemA0, dt, dimX, dimY);
 	_chemA0 = _chemA;
 	_chemB0 = _chemB;
-	for (int i = 0; i < 10; i++){
+	for (int i = 0; i < 2; i++){
 		Diffusion<<<grid,threads>>>(_chemA, laplacian, bounds, dA, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(_chemA, laplacian, dimX, dimY);
 		SetBoundary<<<grid,threads>>>(0, _chemA, bounds, dimX, dimY);
@@ -293,7 +297,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 		SetBoundary<<<grid,threads>>>(0, chemB, bounds, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
-		for (int j = 0; j < 1; j++){
+		for (int j = 0; j < 2; j++){
 		React<<<grid,threads>>>( _chemA, _chemB, (float*)F_TOP->data, (float*)rdCHOP->data, bounds, dt, dimX, dimY );
 		
 		}
@@ -303,11 +307,11 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 	SWAP ( _chemB0, _chemB );
 
 	// Density advection: chemB
-	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], _chemA0, boundary, _chemA,
+	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], _chemA0, bounds, _chemA,
 							dt, 1.0, true, dimX, dimY);
 
 	// Density advection: chemB
-	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], _chemB0, boundary, _chemB,
+	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], _chemB0, bounds, _chemB,
 							dt, 1.0, true, dimX, dimY);
 }
 
@@ -320,19 +324,19 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 
 	// Velocity advection
 	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], vel_prev[0], vel_prev[1],
-								boundary, vel[0], vel[1], 
+								(float*)boundaryTOP->data, vel[0], vel[1], 
 								dt, .9995, dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
 	// Temperature advection
-	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, boundary, temperature,
+	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, (float*)boundaryTOP->data, temperature,
 							dt, .99, false, dimX, dimY);
 	SWAP(temperature_prev, temperature);
 
 	// Vorticity Confinement
 	vorticityConfinement<<<grid,threads>>>( vel[0], vel[1], vel_prev[0], vel_prev[1], 
-											boundary, dt, dimX, dimY);
+											(float*)boundaryTOP->data, dt, dimX, dimY);
 		
 	float Tamb = 0.0;
 	getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
@@ -342,28 +346,32 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
+	// Apply impulses
 	get_from_UI(params, temperature_prev, chemB_prev, vel_prev[0], vel_prev[1]);
 
-	dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], boundary, dt );
+	// Reaction-Diffusion and Density advection
+	dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], (float*)boundaryTOP->data, dt );
 
+	// Compute divergence
+	ComputeDivergence<<<grid,threads>>>( vel_prev[0], vel_prev[1], (float*)boundaryTOP->data, divergence, dimX, dimY );
 
-	ComputeDivergence<<<grid,threads>>>( vel_prev[0], vel_prev[1], boundary, divergence, dimX, dimY );
-
+	// Pressure solve
 	ClearArray<<<grid,threads>>>(pressure_prev, 0.0, dimX, dimY);
 	for (int i=0; i<30; i++){
-		Jacobi<<<grid,threads>>>(pressure_prev, divergence, boundary, pressure, dimX, dimY);
+		Jacobi<<<grid,threads>>>(pressure_prev, divergence, (float*)boundaryTOP->data, pressure, dimX, dimY);
 		SWAP(pressure_prev, pressure);
 	}
 
-	SubtractGradient<<<grid,threads>>>( vel_prev[0], vel_prev[1], pressure_prev, boundary, 
+	// Subtract pressure gradient from velocity
+	SubtractGradient<<<grid,threads>>>( vel_prev[0], vel_prev[1], pressure_prev, (float*)boundaryTOP->data, 
 										vel[0], vel[1], dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
 
-
 	MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
-
+	//MakeColor<<<grid,threads>>>(chemB, (float*)boundaryTOP->data, chemB, (float*)output->data, dimX, dimY);
+	//(float*)boundaryTOP->data
 
 }
 

@@ -57,9 +57,9 @@ getY(int h)
 
 // Returns true if within the bounds of both the container edges and a user-defined boundary
 __device__ bool
-checkBounds(int *_boundary, int x, int y, int w, int h)
+checkBounds(float *_boundary, int x, int y, int w, int h)
 {
-	if (x > 1 && x < w-2 && y > 1 && y < h-2 && _boundary[IX(x,y)] < 1 ){
+	if (x > 1 && x < w-2 && y > 1 && y < h-2 && _boundary[4*IX(x,y)+0] < 1 ){
 		return true;
 	}
 	else {
@@ -102,7 +102,7 @@ intToRgba(int pixel, float &r, float &g, float &b, float &a)
 __device__ void
 rgbaToColor(float *dest, int id, float r, float g, float b, float a)
 {
-	dest[4*id]=b;
+	dest[4*id+0] = b;
 	dest[4*id+1] = g;
 	dest[4*id+2] = r;
 	dest[4*id+3] = a;
@@ -110,12 +110,12 @@ rgbaToColor(float *dest, int id, float r, float g, float b, float a)
 }
 
 // Set boundary conditions
-__device__ void set_bnd( int b, int x, int y, float *field, int *boundary, int w, int h) {
+__device__ void set_bnd( int b, int x, int y, float *field, float *boundary, int w, int h) {
 	int sz = w*h;
 	int id = IX(x,y);
 	
 	bool outOfBnd = false;
-	if (boundary[id] > 0) outOfBnd = true;
+	if (boundary[4*id+0] > 0.0) outOfBnd = true;
 
 	//if (x==0)	field[id] = b==1 ? -1*field[IX(1,y)] : field[IX(1,y)];
 	//if (x==w-1) field[id] = b==1 ? -1*field[IX(w-2,y)] : field[IX(w-2,y)];
@@ -154,21 +154,21 @@ DrawSquare( float *field, float value, int w, int h ) {
 	}
 }
 
-__global__ void 
-DrawBnd( int *boundary, int w, int h ) {
-	int x = getX(w);
-	int y = getY(h);
-	int id = IX(x,y);
+//__global__ void 
+//DrawBnd( int *boundary, int w, int h ) {
+//	int x = getX(w);
+//	int y = getY(h);
+//	int id = IX(x,y);
+//
+//	float posX = (float)x/w;
+//	float posY = (float)y/h;
+//	if ( posX < .82 && posX > .70 && posY < .33 && posY > .21 ) {
+//		boundary[id] = 1;
+//	}
+//	else boundary[id] = 0;
+//}
 
-	float posX = (float)x/w;
-	float posY = (float)y/h;
-	if ( posX < .82 && posX > .70 && posY < .33 && posY > .21 ) {
-		boundary[id] = 1;
-	}
-	else boundary[id] = 0;
-}
-
-__global__ void SetBoundary( int b, float *field, int *boundary, int w, int h ) {
+__global__ void SetBoundary( int b, float *field, float *boundary, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
 
@@ -212,6 +212,15 @@ __global__ void GetFromUI ( float * field, float value, int x_coord, int y_coord
 		field[id] += value;
 	}
 	else return;
+}
+
+__global__ void GetFromUI ( float *u, float *v, float *valueUI, int w, int h ) {
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	u[id] += valueUI[4*id+2]; //red
+	v[id] += valueUI[4*id+1]; //green
 }
 
 __global__ void
@@ -271,7 +280,7 @@ MakeColor(float *src0, float *src1, float *src2, float *dest, int w, int h)
 	int y = getY(h);
 	int id = IX(x,y);
 
-	rgbaToColor(dest, id, src0[id], src1[id], src2[id], 1.0);
+	rgbaToColor(dest, id, src0[id], src1[4*id+0], src2[id], 1.0);
 }
 
 
@@ -325,7 +334,7 @@ bilerp(float *src, float i, float j, int w, int h)
 }
 
 __global__ void Advect (float *vel_u, float *vel_v, float *src_u, float *src_v,
-						int *boundary, float *dest_u, float *dest_v,
+						float *boundary, float *dest_u, float *dest_v,
 						float timeStep, float diff, int w, int h) 
 {
 	int x = getX(w);
@@ -348,7 +357,7 @@ __global__ void Advect (float *vel_u, float *vel_v, float *src_u, float *src_v,
 
 }
 
-__global__ void Advect (float *vel_u, float *vel_v, float *src, int *boundary, float *dest,
+__global__ void Advect (float *vel_u, float *vel_v, float *src, float *boundary, float *dest,
 						float timeStep, float diff, bool skipBilerp, int w, int h) 
 {
 	int x = getX(w);
@@ -382,7 +391,7 @@ __device__ float curl(int i, int j, float *u, float *v)
 	return du_dy - dv_dx;
 }
 
-__global__ void vorticityConfinement(float *u, float *v, float *Fvc_x, float *Fvc_y, int *_boundary, 
+__global__ void vorticityConfinement(float *u, float *v, float *Fvc_x, float *Fvc_y, float *_boundary, 
 								     float dt, int w, int h)
 {
 	int x = getX(w);
@@ -446,7 +455,7 @@ __global__ void ApplyBuoyancy( float *vel_u, float *vel_v, float *temp, float *d
 
 }
 
-__global__ void ComputeDivergence( float *u, float *v, int *boundary, float *dest, int w, int h )
+__global__ void ComputeDivergence( float *u, float *v, float *boundary, float *dest, int w, int h )
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -460,7 +469,7 @@ __global__ void ComputeDivergence( float *u, float *v, int *boundary, float *des
 	}
 }
 
-__global__ void Jacobi( float *p, float *divergence, int *boundary, float *dest, int w, int h )
+__global__ void Jacobi( float *p, float *divergence, float *boundary, float *dest, int w, int h )
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -475,10 +484,10 @@ __global__ void Jacobi( float *p, float *divergence, int *boundary, float *dest,
 		float pC = p[id];
 
 		// Find neighboring obstacles:
-		int oN = boundary[IX(x, y+1)];
-		int oS = boundary[IX(x, y-1)];
-		int oE = boundary[IX(x+1, y)];
-		int oW = boundary[IX(x-1, y)];
+		int oN = boundary[4 * IX(x, y+1) + 0];
+		int oS = boundary[4 * IX(x, y-1) + 0];
+		int oE = boundary[4 * IX(x+1, y) + 0];
+		int oW = boundary[4 * IX(x-1, y) + 0];
 
 		// Use center pressure for solid cells:
 		if (oN > 0) pN = pC;
@@ -496,7 +505,7 @@ __global__ void Jacobi( float *p, float *divergence, int *boundary, float *dest,
 	}
 }
 
-__global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, int *boundary, 
+__global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *boundary, 
 								  float *dest_u, float *dest_v, int w, int h) 
 {
 	int x = getX(w);
@@ -512,16 +521,16 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, int *bou
 		float pC = p[id];
 		
 		// Find neighboring obstacles:
-		int oN = boundary[IX(x, y+1)];
-		int oS = boundary[IX(x, y-1)];
-		int oE = boundary[IX(x+1, y)];
-		int oW = boundary[IX(x-1, y)];
+		int oN = boundary[4 * IX(x, y+1) + 0];
+		int oS = boundary[4 * IX(x, y-1) + 0];
+		int oE = boundary[4 * IX(x+1, y) + 0];
+		int oW = boundary[4 * IX(x-1, y) + 0];
 
 		// Use center pressure for solid cells:
 		float obstV = 0.0;
 		float vMask = 1.0;
 		
-		if (oN > 0) { pN = pC; vMask = 0.0; }
+		if (oN > 0) {pN = pC; vMask = 0.0; }
 		if (oS > 0) {pS = pC; vMask = 0.0; }
 		if (oE > 0) {pE = pC; vMask = 0.0; }
 		if (oW > 0) {pW = pC; vMask = 0.0; }
@@ -548,7 +557,7 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, int *bou
 
 
 __global__ void 
-Diffusion(float *_chem, float *_lap, int *_boundary, float _difConst, float dt, int w, int h) 
+Diffusion(float *_chem, float *_lap, float *_boundary, float _difConst, float dt, int w, int h) 
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -562,11 +571,9 @@ Diffusion(float *_chem, float *_lap, int *_boundary, float _difConst, float dt, 
 		float dx = (float)xLength/(float)x;
 		float alpha = (float)(_difConst * dt / (float)(dx*dx));
 
-		int n1 = getX(x-1);
-		int n2 = getX(x+1);
-		int n3 = getY(y-1);
-		int n4 = getY(y+1);
 		_lap[id] = (float)(-4.0f * _chem[id]) + (float)(_chem[IX(x+1,y)] + _chem[IX(x-1,y)] + _chem[IX(x,y+1)] + _chem[IX(x,y-1)]);
+		//_lap[id] = (float)(-8 * _chem[id]) +	(_chem[IX(x+1,y)] + _chem[IX(x-1,y)] + _chem[IX(x,y+1)] + _chem[IX(x,y-1)] + 
+		//										 _chem[IX(x+1,y+1)] + _chem[IX(x-1,y-1)] + _chem[IX(x-1,y+1)] + _chem[IX(x+1,y-1)]);
 		_lap[id] = (float)_lap[id]*alpha;
 	}
 }
@@ -581,7 +588,7 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, float *F_input, float *rd, int *_boundary, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, float *F_input, float *rd, float *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
