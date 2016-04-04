@@ -24,6 +24,7 @@
 */simpleGL
 *.dmp
 CrashAutoSave*
+cudaTOPFluid2
 
 ##################################################################################
 ### VisualStudio ###

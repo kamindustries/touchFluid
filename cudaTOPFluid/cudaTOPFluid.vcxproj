@@ -168,6 +168,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     <ClInclude Include="defines.h" />
     <ClInclude Include="private/TCUDA_Types.h" />
     <ClInclude Include="TCUDA_enum.h" />
+    <ClInclude Include="util_functions.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="private/cudaTOPFluid.cpp" />
