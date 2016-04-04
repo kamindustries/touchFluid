@@ -27,10 +27,12 @@
 #ifndef __CUDA_Types__
 #define __CUDA_Types__
 
-#include <cuda_runtime.h>
+#include <string>
+#include <cuda_runtime_api.h>
+#include <driver_types.h>
 
-#define TCUDA_API_VERSION		1
-
+#include "../defines.h"
+#include "../common.cuh"
 
 typedef enum
 {
@@ -353,7 +355,7 @@ struct TCUDA_ParamInfo
 struct matrix3x3
 {
     float3 m[3];
-} ;
+};
 
 struct matrix4x3
 {

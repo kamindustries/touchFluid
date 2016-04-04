@@ -11,7 +11,9 @@
 // This define is needed before each function so that is exported and Touch can find it in the .dll
 
 
-#include "../common.cuh"
+//#include "../common.cuh"
+#include "TCUDA_Types.h"
+//#include "../util_functions.hpp"
 
 // This is needed around every function so the compiler keeps the function name exactly, so Touch can find it.
 extern "C" {

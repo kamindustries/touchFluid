@@ -3,11 +3,8 @@
 	Kurt Kaminski 2016
 */
 
-#include "private/TCUDA_Types.h"
-#include "defines.h"
-#include <math.h>
-
-//#include <stdio.h>
+#include <cuda_runtime_api.h>
+//#include <math.h>
 
 __device__ int
 clamp(int i)
