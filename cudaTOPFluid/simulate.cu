@@ -3,9 +3,13 @@
 	Kurt Kaminski 2016
 */
 
-#include "kernels.cuh"
+#include <iostream>
+#include <map>
+
 #include "common.cuh"
+#include "kernels.cuh"
 #include "util_functions.hpp"
+#include "private/TCUDA_Types.h"
 
 using namespace std;
 
@@ -66,26 +70,6 @@ void findNodes(const int nparams, const TCUDA_ParamInfo **params){
 		}
 	}
 	printf("findNodes(): done finding nodes.\n");
-
-
-	//for (int i = 0; i < nparams; i++){
-	//	if (hasBeginning(params[i]->name, "OUT_mouse")){
-	//		mouseCHOP = params[i];
-	//		printf("findNodes(): found mouse: %s\n", mouseCHOP->name);
-	//	}
-	//	if (hasBeginning(params[i]->name, "OUT_boundary")){
-	//		boundaryTOP = params[i];
-	//		printf("findNodes(): found Boundary TOP: %s\n", boundaryTOP->name);
-	//	}
-	//	if (hasBeginning(params[i]->name, "OUT_rdF")){
-	//		F_TOP = params[i];
-	//		printf("findNodes(): found F TOP: %s\n", F_TOP->name);
-	//	}
-	//	if (hasBeginning(params[i]->name, "OUT_rdCHOP")){
-	//		rdCHOP = params[i];
-	//		printf("findNodes(): found rd CHOP: %s\n", rdCHOP->name);
-	//	}
-	//}
 
 }
 

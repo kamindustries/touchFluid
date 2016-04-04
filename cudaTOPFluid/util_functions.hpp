@@ -2,6 +2,8 @@
 #define __CUDA_TOP_FLUID_UTIL_FUNCTIONS__
 
 #include <string>
+#include "TCUDA_enum.h"
+#include "private/TCUDA_Types.h"
 
 bool hasEnding (std::string const &fullString, std::string const &ending) {
     if (fullString.length() >= ending.length()) {
