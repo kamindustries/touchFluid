@@ -5,6 +5,7 @@
 
 #include "kernels.cuh"
 #include "common.cuh"
+#include "util_functions.hpp"
 
 using namespace std;
 
@@ -40,48 +41,6 @@ float dB = 0.00001;
 
 // ffmpeg -i [input] -c:v libvpx -b:v 1M [output].webm
 // ffmpeg -i [input] -c:v libx264 -b:v 1M [output].webm
-
-bool hasEnding (string const &fullString, string const &ending) {
-    if (fullString.length() >= ending.length()) {
-        return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
-    } else {
-        return false;
-    }
-}
-
-bool hasBeginning (string const &fullString, string const &beginning) {
-	if (fullString.find(beginning) != string::npos )
-		return true;
-	else 
-		return false;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Print connected node information
-///////////////////////////////////////////////////////////////////////////////
-void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
-	printf("\n----------\nINCOMING PARAMETERS:\n");
-	printf("%d nodes connected\n\n", nparams);
-
-	for (int i = 0; i < nparams; i++) {
-		printf("Node %d: %s\n", params[i]->inputNumber, params[i]->name);
-		printf("%d values\n", params[i]->param.numValues);
-		if (params[i]->dataType == TCUDA_DATA_TYPE_TOP){
-			printf("  TOP INFO:\n");
-			printf("  w: %d, h: %d\n", params[i]->top.width, params[i]->top.height);
-			printf("  %s\n", TCUDA_ChanOrder_enum[params[i]->top.chanOrder]); 
-		}
-		if (params[i]->dataType == TCUDA_DATA_TYPE_CHOP){
-			printf("  CHOP INFO:\n");
-			printf("  Num channels: %d\n", params[i]->chop.numChannels); 
-			printf("  Length: %d\n", params[i]->chop.length);
-			printf("  Sample rate: %f\n", params[i]->chop.sampleRate); 
-		}
-		printf("\n");
-	}
-	printf("----------\n\n");
-}
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Find connected nodes for easier reference in a map
