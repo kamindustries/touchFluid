@@ -124,7 +124,7 @@ typedef enum
     TCUDA_MEM_TYPE_ARRAY = 1,
 } TCUDA_MemType;
 
-typedef struct
+struct TCUDA_NodeInfo
 {
     const char			*node;		// This will be the name of the node
     unsigned int		 uniqueNodeId;  // This is the unique id of the node
@@ -132,9 +132,9 @@ typedef struct
 
 
     int					 reserved[9];
-} TCUDA_NodeInfo;
+} ;
 
-typedef struct
+struct TCUDA_GeneralInfo
 {
     bool	timeDependent;	// If you set this to true, the node will cook next frame
     						// regardless if any if it's input change,
@@ -143,10 +143,10 @@ typedef struct
 
     
     int		reserved[9];
-} TCUDA_GeneralInfo;
+} ;
 
 
-typedef struct
+struct TCUDA_TOPOutputInfo
 {
     int					 width;		// The width of the TOP
     int					 height;	// The height of the TOP
@@ -156,18 +156,18 @@ typedef struct
 
     
     int					 reserved[7];
-} TCUDA_TOPOutputInfo;
+} ;
 
-typedef struct
+struct TCUDA_TOPKernelOutputInfo
 {
     TCUDA_ChanOrder 	chanOrder;		// The order that the channels are layed out in memory
     TCUDA_DataFormat	dataFormat;		// The data format the output will be in memory
 
     
     int					reserved[7];
-} TCUDA_TOPKernelOutputInfo;
+};
 
-typedef struct
+struct TCUDA_ParamRequest
 {
     const char*		 name;		// The full path to the node, or the name of the parameter
     TCUDA_DataType	 dataType;		// The type of data the parameter will be
@@ -217,9 +217,9 @@ typedef struct
 		    
     } ;
 
-} TCUDA_ParamRequest;
+};
 
-typedef struct
+struct TCUDA_ParamRequestResult
 {
     int reserved[9];
     union
@@ -277,9 +277,9 @@ typedef struct
 		} string;
     } ;
     
-} TCUDA_ParamRequestResult;
+};
 
-typedef struct
+struct TCUDA_ParamInfo
 {
     const char*			 name;			// The full path to the node or the name 
     									// of the paremeter.
@@ -300,6 +300,7 @@ typedef struct
 
     int					reserved[5];
     void				*touchUseOnly;	// This one is for use by Touch only
+
     union 
     {
 		struct
@@ -347,34 +348,34 @@ typedef struct
 		} string;
 		
     };
-} TCUDA_ParamInfo;
+};
 
-typedef struct
+struct matrix3x3
 {
     float3 m[3];
-} matrix3x3;
+} ;
 
-typedef struct
+struct matrix4x3
 {
     float4 m[3];
-} matrix4x3;
+};
 
-typedef struct
+struct matrix4x4
 {
     float4 m[4];
-} matrix4x4;
+};
 
 // These structures are what the 'data' member of TCUDA_ParamInfo is
 // in the case of Object COMPs with transform data
-typedef struct
+struct TCUDA_GeoTransformInfo
 {
     matrix4x4		localTransform;
     matrix4x4		localITransform;
     matrix4x4		worldTransform;
     matrix4x4		worldITransform;
-} TCUDA_GeoTransformInfo;
+} ;
 
-typedef struct
+struct TCUDA_CameraTransformInfo
 {
     matrix4x4		localTransform;
     matrix4x4		localITransform;
@@ -382,9 +383,9 @@ typedef struct
     matrix4x4		worldITransform;
     matrix4x4		projTransform;
     matrix4x4		projITransform;
-} TCUDA_CameraTransformInfo;
+};
 
-typedef struct
+struct TCUDA_CameraParameterInfo
 {
     TCUDA_ProjectionType		projection;
     float		orthoWidth;
@@ -402,7 +403,7 @@ typedef struct
     float		fogNear;
     float		fogFar;
     float4		fogColor;
-} TCUDA_CameraParameterInfo;
+};
 
 #ifdef WIN32 
 typedef void (__cdecl *TCUDAGETGENERALINFO) (const TCUDA_NodeInfo *, TCUDA_GeneralInfo *ginfo);

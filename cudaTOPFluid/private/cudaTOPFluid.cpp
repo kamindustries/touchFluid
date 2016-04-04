@@ -104,15 +104,15 @@ tCudaGetParamInfo(const TCUDA_NodeInfo *info, const TCUDA_ParamRequest *request,
 	// Only send data if it's a TOP or a CHOP
 	if (request->dataType == TCUDA_DATA_TYPE_TOP)
 	{
-		// If there's a _f at the end of the name, allocate TOP as a float, else allocate as int
-		if (hasEnding(request->name, "_f"))
+		// If there's a _i at the end of the name, allocate TOP as an int, else allocate as float
+		if (hasEnding(request->name, "_i"))
 		{
-			reqResult->top.dataFormat = TCUDA_DATA_FORMAT_FLOAT;
+			reqResult->top.dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
 			return true;
 		}
 		else 
 		{
-			reqResult->top.dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
+			reqResult->top.dataFormat = TCUDA_DATA_FORMAT_FLOAT;
 			return true;
 		}
 	}

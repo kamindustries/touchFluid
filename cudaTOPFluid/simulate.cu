@@ -6,6 +6,8 @@
 #include "kernels.cuh"
 #include "common.cuh"
 
+using namespace std;
+
 dim3 grid, threads;
 
 bool runOnce = true;
@@ -19,6 +21,7 @@ float *divergence;
 float *boundary;
 
 // incoming data
+map<string, const TCUDA_ParamInfo*> nodes;
 float *mouse, *mouse_old;
 const TCUDA_ParamInfo *mouseCHOP;
 const TCUDA_ParamInfo *boundaryTOP;
@@ -35,21 +38,10 @@ float source_temp = .25;
 float dA = 0.0002; // diffusion constants
 float dB = 0.00001;
 
-char* TCUDA_DataType_enum[];
-char* TCUDA_ProjectionType_enum[];
-char* TCUDA_ObjSubType_enum[];
-char* TCUDA_DataFormat_enum[];
-char* TCUDA_ParamDataFormat_enum[];
-char* TCUDA_DataLocation_enum[];
-char* TCUDA_ChanOrder_enum[];
-char* TCUDA_OutputType_enum[];
-char* TCUDA_PixelFormat_enum[];
-char* TCUDA_ObjParamType_enum[];
-char* TCUDA_FogType_enum[];
-char* TCUDA_MemType_enum[];
-
 // ffmpeg -i [input] -c:v libvpx -b:v 1M [output].webm
-bool hasEnding (std::string const &fullString, std::string const &ending) {
+// ffmpeg -i [input] -c:v libx264 -b:v 1M [output].webm
+
+bool hasEnding (string const &fullString, string const &ending) {
     if (fullString.length() >= ending.length()) {
         return (0 == fullString.compare (fullString.length() - ending.length(), ending.length(), ending));
     } else {
@@ -57,8 +49,8 @@ bool hasEnding (std::string const &fullString, std::string const &ending) {
     }
 }
 
-bool hasBeginning (std::string const &fullString, std::string const &beginning) {
-	if (fullString.find(beginning) != std::string::npos )
+bool hasBeginning (string const &fullString, string const &beginning) {
+	if (fullString.find(beginning) != string::npos )
 		return true;
 	else 
 		return false;
@@ -90,28 +82,51 @@ void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("----------\n\n");
 }
 
+
 ///////////////////////////////////////////////////////////////////////////////
-// Find CHOPS
+// Find connected nodes for easier reference in a map
 ///////////////////////////////////////////////////////////////////////////////
-void findCHOPS(const int nparams, const TCUDA_ParamInfo **params){
-	for (int i = 0; i < nparams; i++){
-		if (hasBeginning(params[i]->name, "OUT_mouse")){
-			mouseCHOP = params[i];
-			printf("findCHOPS(): found mouse: %s\n", mouseCHOP->name);
-		}
-		if (hasBeginning(params[i]->name, "OUT_boundary")){
-			boundaryTOP = params[i];
-			printf("findCHOPS(): found Boundary TOP: %s\n", boundaryTOP->name);
-		}
-		if (hasBeginning(params[i]->name, "OUT_rdF")){
-			F_TOP = params[i];
-			printf("findCHOPS(): found F TOP: %s\n", F_TOP->name);
-		}
-		if (hasBeginning(params[i]->name, "OUT_rdCHOP")){
-			rdCHOP = params[i];
-			printf("findCHOPS(): found rd CHOP: %s\n", rdCHOP->name);
+void findNodes(const int nparams, const TCUDA_ParamInfo **params){
+
+	// fill nodes<> with key/value pairs
+	nodes["mouse"] = mouseCHOP;
+	nodes["boundary"] = boundaryTOP;
+	nodes["rdF"] = F_TOP;
+	nodes["rdCHOP"] = rdCHOP;
+
+
+	// search incoming params[] for matching name and assigne nodes<> value to it
+	typedef map<string, const TCUDA_ParamInfo*>::iterator iterator;
+	for (iterator it = nodes.begin(); it != nodes.end(); it++){
+		for (int i = 0; i < nparams; i++){
+			if (hasBeginning(params[i]->name, it->first)){
+				it->second = params[i];
+				printf("findNodes(): found %s: %s\n", it->first.c_str(), it->second->name);
+				break;
+			}
 		}
 	}
+	printf("findNodes(): done finding nodes.\n");
+
+
+	//for (int i = 0; i < nparams; i++){
+	//	if (hasBeginning(params[i]->name, "OUT_mouse")){
+	//		mouseCHOP = params[i];
+	//		printf("findNodes(): found mouse: %s\n", mouseCHOP->name);
+	//	}
+	//	if (hasBeginning(params[i]->name, "OUT_boundary")){
+	//		boundaryTOP = params[i];
+	//		printf("findNodes(): found Boundary TOP: %s\n", boundaryTOP->name);
+	//	}
+	//	if (hasBeginning(params[i]->name, "OUT_rdF")){
+	//		F_TOP = params[i];
+	//		printf("findNodes(): found F TOP: %s\n", F_TOP->name);
+	//	}
+	//	if (hasBeginning(params[i]->name, "OUT_rdCHOP")){
+	//		rdCHOP = params[i];
+	//		printf("findNodes(): found rd CHOP: %s\n", rdCHOP->name);
+	//	}
+	//}
 
 }
 
@@ -132,10 +147,10 @@ void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_outp
 	printf("-- DIMENSIONS: %d x %d --\n", dimX, dimY);
 	
 	// Get mouse info
-	int num_mouse_chans = mouseCHOP->chop.numChannels;
+	int num_mouse_chans = nodes["mouse"]->chop.numChannels;
 	mouse = (float*)malloc(sizeof(float)*num_mouse_chans);
 	mouse_old = (float*)malloc(sizeof(float)*num_mouse_chans);
-	cudaMemcpy(mouse, (float*)mouseCHOP->data, sizeof(float)*num_mouse_chans, cudaMemcpyDeviceToHost);
+	cudaMemcpy(mouse, (float*)nodes["mouse"]->data, sizeof(float)*num_mouse_chans, cudaMemcpyDeviceToHost);
 	for (int i=0; i<num_mouse_chans; i++){
 		mouse_old[i]=mouse[i];
 	}
@@ -204,7 +219,7 @@ void initArrays()
 void initialize(const int _nparams, const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_output)
 {
 	printNodeInfo(_nparams, _params);
-	findCHOPS(_nparams, _params);
+	findNodes(_nparams, _params);
 	initVariables(_params, _output);
 	initCUDA();
 	initArrays();
@@ -227,14 +242,14 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	//MakeSource<<<grid,threads>>>((int*)params[0]->data, _chemB0, dimX, dimY);
 	
 	// Use second input as boundary conditions
-	//boundary = (float*)boundaryTOP->data;
-	//MakeSource<<<grid,threads>>>((float*)boundaryTOP->data, boundary, dimX, dimY);
+	//boundary = (float*)nodes["boundary"]->data;
+	//MakeSource<<<grid,threads>>>((float*)nodes["boundary"]->data, boundary, dimX, dimY);
 	
 	// Apply obstacle velocity
-	GetFromUI<<<grid,threads>>>(_u, _v, (float*)boundaryTOP->data, dimX, dimY);
+	GetFromUI<<<grid,threads>>>(_u, _v, (float*)nodes["boundary"]->data, dimX, dimY);
 	
 	// Update mouse info
-	cudaMemcpy(mouse, (float*)mouseCHOP->data, sizeof(float)*mouseCHOP->chop.numChannels, cudaMemcpyDeviceToHost);
+	cudaMemcpy(mouse, (float*)nodes["mouse"]->data, sizeof(float)*nodes["mouse"]->chop.numChannels, cudaMemcpyDeviceToHost);
 	
 	if ( mouse[2] < 1.0 && mouse[3] < 1.0 ) return;
 
@@ -298,7 +313,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
 		for (int j = 0; j < 2; j++){
-		React<<<grid,threads>>>( _chemA, _chemB, (float*)F_TOP->data, (float*)rdCHOP->data, bounds, dt, dimX, dimY );
+		React<<<grid,threads>>>( _chemA, _chemB, (float*)nodes["rdF"]->data, (float*)nodes["rdCHOP"]->data, bounds, dt, dimX, dimY );
 		
 		}
 	}
@@ -324,19 +339,19 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 
 	// Velocity advection
 	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], vel_prev[0], vel_prev[1],
-								(float*)boundaryTOP->data, vel[0], vel[1], 
+								(float*)nodes["boundary"]->data, vel[0], vel[1], 
 								dt, .9995, dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
 	// Temperature advection
-	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, (float*)boundaryTOP->data, temperature,
+	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, (float*)nodes["boundary"]->data, temperature,
 							dt, .99, false, dimX, dimY);
 	SWAP(temperature_prev, temperature);
 
 	// Vorticity Confinement
 	vorticityConfinement<<<grid,threads>>>( vel[0], vel[1], vel_prev[0], vel_prev[1], 
-											(float*)boundaryTOP->data, dt, dimX, dimY);
+											(float*)nodes["boundary"]->data, dt, dimX, dimY);
 		
 	float Tamb = 0.0;
 	getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
@@ -350,38 +365,37 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 	get_from_UI(params, temperature_prev, chemB_prev, vel_prev[0], vel_prev[1]);
 
 	// Reaction-Diffusion and Density advection
-	dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], (float*)boundaryTOP->data, dt );
+	dens_step( chemA, chemA_prev, chemB, chemB_prev, vel_prev[0], vel_prev[1], (float*)nodes["boundary"]->data, dt );
 
 	// Compute divergence
-	ComputeDivergence<<<grid,threads>>>( vel_prev[0], vel_prev[1], (float*)boundaryTOP->data, divergence, dimX, dimY );
+	ComputeDivergence<<<grid,threads>>>( vel_prev[0], vel_prev[1], (float*)nodes["boundary"]->data, divergence, dimX, dimY );
 
 	// Pressure solve
 	ClearArray<<<grid,threads>>>(pressure_prev, 0.0, dimX, dimY);
 	for (int i=0; i<30; i++){
-		Jacobi<<<grid,threads>>>(pressure_prev, divergence, (float*)boundaryTOP->data, pressure, dimX, dimY);
+		Jacobi<<<grid,threads>>>(pressure_prev, divergence, (float*)nodes["boundary"]->data, pressure, dimX, dimY);
 		SWAP(pressure_prev, pressure);
 	}
 
 	// Subtract pressure gradient from velocity
-	SubtractGradient<<<grid,threads>>>( vel_prev[0], vel_prev[1], pressure_prev, (float*)boundaryTOP->data, 
+	SubtractGradient<<<grid,threads>>>( vel_prev[0], vel_prev[1], pressure_prev, (float*)nodes["boundary"]->data, 
 										vel[0], vel[1], dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
 
 	MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
-	//MakeColor<<<grid,threads>>>(chemB, (float*)boundaryTOP->data, chemB, (float*)output->data, dimX, dimY);
-	//(float*)boundaryTOP->data
+	//MakeColor<<<grid,threads>>>(chemB, (float*)nodes["boundary"]->data, chemB, (float*)output->data, dimX, dimY);
 
 }
 
 extern "C"
 {
-	// The main function where you should execute your CUDA kernel(s).
+	// The main function to execute CUDA kernel(s).
 	// nparams is the number of parameters passed into this function
 	// and params is the array of those parameters
 	// output contains information about the output you need to write
-	// output.data is the array that you write out to (this will be turned into a TOP by Touch)
+	// output.data is the array to write out to (this will be turned into a TOP by Touch)
 
 	// 3d texture idea: output different Z slices with each frame #, compiling them into a Texture3d TOP
 	//					would have to change framerate to compensate for #of slices/fps 
