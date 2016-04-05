@@ -33,15 +33,17 @@ const TCUDA_ParamInfo *boundaryTOP;
 const TCUDA_ParamInfo *F_TOP;
 const TCUDA_ParamInfo *rdCHOP;
 
-float dt = .1;
+float dt = .02;
 float diff = 0.00001f;
 float visc = 0.000001f;
 float force = 30.;
 float buoy = 0.0;
 float source_density = 2.0;
 float source_temp = .25;
-float dA = 0.0002; // diffusion constants
-float dB = 0.00001;
+//float dA = 0.0002; // diffusion constants
+//float dB = 0.00001;
+float dA = 0.75; // diffusion constants
+float dB = 0.0;
 
 // ffmpeg -i [input] -c:v libvpx -b:v 1M [output].webm
 // ffmpeg -i [input] -c:v libx264 -b:v 1M [output].webm
@@ -138,8 +140,8 @@ void initArrays()
 	  ClearArray<<<grid,threads>>>(vel_prev[i], 0.0, dimX, dimY);
   }
 
-  ClearArray<<<grid,threads>>>(chemA, 1.0, dimX, dimY);
-  ClearArray<<<grid,threads>>>(chemA_prev, 1.0, dimX, dimY);
+  ClearArray<<<grid,threads>>>(chemA, 0.0, dimX, dimY);
+  ClearArray<<<grid,threads>>>(chemA_prev, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(chemB, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(chemB_prev, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
@@ -179,7 +181,8 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	//ClearArray<<<grid,threads>>>(_u, 0.0, dimX, dimY);
 	//ClearArray<<<grid,threads>>>(_v, 0.0, dimX, dimY);
 
-	//DrawSquare<<<grid,threads>>>(_chemB0, 1.0, dimX, dimY);
+	DrawSquare<<<grid,threads>>>(chemA, 1.0, dimX, dimY);
+	DrawSquare<<<grid,threads>>>(chemB, 0.75 * .5, dimX, dimY);
 
 	// Use first input as material for chemB
 	//MakeSource<<<grid,threads>>>((int*)params[0]->data, _chemB0, dimX, dimY);
@@ -240,7 +243,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 {
 
 	// Naive ARD-----------------------
-	AddSource<<<grid,threads>>>(_chemB, _chemB0, dt, dimX, dimY);
+	//AddSource<<<grid,threads>>>(_chemB, _chemB0, dt, dimX, dimY);
 	//AddSource<<<grid,threads>>>(_chemA, _chemA0, dt, dimX, dimY);
 	_chemA0 = _chemA;
 	_chemB0 = _chemB;
@@ -255,7 +258,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 		SetBoundary<<<grid,threads>>>(0, chemB, bounds, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
-		for (int j = 0; j < 2; j++){
+		for (int j = 0; j < 1; j++){
 		React<<<grid,threads>>>( _chemA, _chemB, (float*)nodes["rdF"]->data, (float*)nodes["rdCHOP"]->data, bounds, dt, dimX, dimY );
 		
 		}

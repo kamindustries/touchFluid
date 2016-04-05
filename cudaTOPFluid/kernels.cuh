@@ -338,7 +338,8 @@ __global__ void Advect (float *vel_u, float *vel_v, float *src_u, float *src_v,
 	int y = getY(h);
 	int id = IX(x,y);
 
-	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+	//if (x > 1 && x < w-1 && y > 1 && y < h-1){
+	if (checkBounds(boundary, x, y, w, h)) {
 		float dt0 = (float)timeStep * float(w-2);
 		float i = float(x) - dt0 * vel_u[id];
 		float j = float(y) - dt0 * vel_v[id];
@@ -347,7 +348,7 @@ __global__ void Advect (float *vel_u, float *vel_v, float *src_u, float *src_v,
 		dest_v[id] = diff * bilerp(src_v, i, j, w, h);
 	}
 
-	if (!checkBounds(boundary, x, y, w, h)) {
+	else {
 		dest_u[id] = 0.0;
 		dest_v[id] = 0.0;
 	}
@@ -361,21 +362,16 @@ __global__ void Advect (float *vel_u, float *vel_v, float *src, float *boundary,
 	int y = getY(h);
 	int id = IX(x,y);
 
-	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+	if (checkBounds(boundary, x, y, w, h)) {
+	//if (x > 1 && x < w-1 && y > 1 && y < h-1){
 		float dt0 = (float)timeStep * float(w-2);
 		float i = float(x) - dt0 * vel_u[id];
 		float j = float(y) - dt0 * vel_v[id];
 
 		dest[id] = diff * bilerp(src, i, j, w, h);
-
-		//if (skipBilerp) {
-		//	int c_x = x - timeStep * vel_u[id];
-		//	int c_y = y - timeStep * vel_v[id];
-		//	dest[id] = src[IX(c_x, c_y)];
-		//}
 	}
 
-	if (!checkBounds(boundary, x, y, w, h)) {
+	else {
 		dest[id] = 0.0;
 	}
 }
@@ -458,7 +454,8 @@ __global__ void ComputeDivergence( float *u, float *v, float *boundary, float *d
 	int y = getY(h);
 	int id = IX(x,y);
 
-	if (x > 2 && x < w-2 && y > 2 && y < h-2){
+	//if (x > 2 && x < w-2 && y > 2 && y < h-2){
+	if (checkBounds(x, y, w, h)){
 		float cellSize = 1.0;
 		//dest[id] = (0.5 / cellSize) * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] );
 		//dest[id] = 0.5 * ( (u[IX(x+1, y)] - u[IX(x-1, y)]) + (v[IX(x, y+1)] - v[IX(x, y-1)]) ) ;
@@ -472,7 +469,7 @@ __global__ void Jacobi( float *p, float *divergence, float *boundary, float *des
 	int y = getY(h);
 	int id = IX(x,y);
 
-	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+	if (checkBounds(x, y, w, h)){
 		// Find neighboring pressure:
 		float pN = p[IX(x, y+1)];
 		float pS = p[IX(x, y-1)];
@@ -509,7 +506,7 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *b
 	int y = getY(h);
 	int id = IX(x,y);
 
-	if (x > 1 && x < w-1 && y > 1 && y < h-1){
+	if (checkBounds(x, y, w, h)){
 		// Find neighboring pressure:
 		float pN = p[IX(x, y+1)];
 		float pS = p[IX(x, y-1)];
@@ -548,7 +545,10 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *b
 
 		dest_u[id] = (vMask * new_u) + obstV;
 		dest_v[id] = (vMask * new_v) + obstV;
-	
+	}
+	else {
+		dest_u[id] = 0.0;
+		dest_v[id] = 0.0;
 	}
 }
 
@@ -564,13 +564,14 @@ Diffusion(float *_chem, float *_lap, float *_boundary, float _difConst, float dt
 	if (checkBounds(_boundary, x, y, w, h)) {
 
 		// constants
-		float xLength = (float)x/100.0;
+		//float xLength = (float)x/100.0;
+		float xLength = (float)x/1.21212;
+		float yLength = (float)y/1.21212;
 		float dx = (float)xLength/(float)x;
-		float alpha = (float)(_difConst * dt / (float)(dx*dx));
+		float dy = (float)yLength/(float)y;
+		float alpha = (float)(_difConst * dt / (float)(dx*dy));
 
 		_lap[id] = (float)(-4.0f * _chem[id]) + (float)(_chem[IX(x+1,y)] + _chem[IX(x-1,y)] + _chem[IX(x,y+1)] + _chem[IX(x,y-1)]);
-		//_lap[id] = (float)(-8 * _chem[id]) +	(_chem[IX(x+1,y)] + _chem[IX(x-1,y)] + _chem[IX(x,y+1)] + _chem[IX(x,y-1)] + 
-		//										 _chem[IX(x+1,y+1)] + _chem[IX(x-1,y-1)] + _chem[IX(x-1,y+1)] + _chem[IX(x+1,y-1)]);
 		_lap[id] = (float)_lap[id]*alpha;
 	}
 }
@@ -608,8 +609,15 @@ __global__ void React( float *_chemA, float *_chemB, float *F_input, float *rd, 
 		float A = _chemA[id];
 		float B = _chemB[id];
 
-		float reactionA = -A * (B*B) + (F * (1.0-A));
-		float reactionB = A * (B*B) - (F+k)*B;
+		// Gray-Scott
+		//float reactionA = -A * (B*B) + (F * (1.0-A));
+		//float reactionB = A * (B*B) - (F+k)*B;
+
+		// Barkley Model
+		float e = 0.02;
+		float reactionA = A * (1-A) * ((A- (B+rd[1])/rd[0]) / e);
+		float reactionB = A - B;
+
 		_chemA[id] += (dt * reactionA);
 		_chemB[id] += (dt * reactionB);
 	}
