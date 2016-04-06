@@ -111,18 +111,18 @@ __device__ void set_bnd( int b, int x, int y, float *field, float *boundary, int
 	int sz = w*h;
 	int id = IX(x,y);
 	
-	bool outOfBnd = false;
-	if (boundary[4*id+0] > 0.0) outOfBnd = true;
+	bool outOfBnd = boundary[4*id+0] > 0.0 ? true : false;
+	//if (boundary[4*id+0] > 0.0) outOfBnd = true;
 
 	//if (x==0)	field[id] = b==1 ? -1*field[IX(1,y)] : field[IX(1,y)];
 	//if (x==w-1) field[id] = b==1 ? -1*field[IX(w-2,y)] : field[IX(w-2,y)];
 	//if (y==0)   field[id] = b==2 ? -1*field[IX(x,1)] : field[IX(x,1)];
 	//if (y==h-1) field[id] = b==2 ? -1*field[IX(x,h-2)] : field[IX(x,h-2)];
 	
-	if (x==0)	field[id] = b==1 ? -1*field[IX(1,y)] : -1 * field[IX(1,y)];
-	if (x==w-1) field[id] = b==1 ? -1*field[IX(w-2,y)] : -1 * field[IX(w-2,y)];
-	if (y==0)   field[id] = b==2 ? -1*field[IX(x,1)] : -1 * field[IX(x,1)];
-	if (y==h-1) field[id] = b==2 ? -1*field[IX(x,h-2)] : -1 * field[IX(x,h-2)];
+	if (x==0 || outOfBnd)	field[id] = b==1 ? -1*field[IX(1,y)] : -1 * field[IX(1,y)];
+	if (x==w-1 || outOfBnd) field[id] = b==1 ? -1*field[IX(w-2,y)] : -1 * field[IX(w-2,y)];
+	if (y==0 || outOfBnd)   field[id] = b==2 ? -1*field[IX(x,1)] : -1 * field[IX(x,1)];
+	if (y==h-1 || outOfBnd) field[id] = b==2 ? -1*field[IX(x,h-2)] : -1 * field[IX(x,h-2)];
 
 	//if (outOfBnd){
 	//	field[id] = -1*field[id];
@@ -199,7 +199,8 @@ ClearArray(int *field, float value, int w, int h)
 	field[id] = value;
 }
 
-__global__ void GetFromUI ( float * field, float value, int x_coord, int y_coord, int w, int h ) {
+// How can I template these?
+__global__ void AddFromUI ( float * field, float value, int x_coord, int y_coord, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
@@ -211,13 +212,25 @@ __global__ void GetFromUI ( float * field, float value, int x_coord, int y_coord
 	else return;
 }
 
-__global__ void GetFromUI ( float *u, float *v, float *valueUI, int w, int h ) {
+__global__ void AddFromUI ( float *u, float *v, float *valueUI, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
 	u[id] += valueUI[4*id+2]; //red
 	v[id] += valueUI[4*id+1]; //green
+}
+
+__global__ void SetFromUI ( float *A, float *B, float *valueUI, int w, int h ) {
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	float v1 = valueUI[4*id+2]; //red
+	float v2 = valueUI[4*id+1]; //green
+
+	if (v1 > 0.0) A[id] = v1;
+	if (v2 > 0.0) B[id] = v2;
 }
 
 __global__ void
@@ -456,7 +469,7 @@ __global__ void ComputeDivergence( float *u, float *v, float *boundary, float *d
 
 	//if (x > 2 && x < w-2 && y > 2 && y < h-2){
 	if (checkBounds(x, y, w, h)){
-		float cellSize = 1.0;
+		//float cellSize = 1.0;
 		//dest[id] = (0.5 / cellSize) * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] );
 		//dest[id] = 0.5 * ( (u[IX(x+1, y)] - u[IX(x-1, y)]) + (v[IX(x, y+1)] - v[IX(x, y-1)]) ) ;
 		dest[id] = 0.5 * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] ) / float(w-2);
@@ -489,13 +502,12 @@ __global__ void Jacobi( float *p, float *divergence, float *boundary, float *des
 		if (oE > 0) pE = pC;
 		if (oW > 0) pW = pC;
 
-		float cellSize = 1.0;
+		//float cellSize = 1.0;
 		//float Alpha = -cellSize * cellSize;
 		float Alpha = -1.0;
 		float bC = divergence[id];
 		float InverseBeta = .25;
 		dest[id] = (pW + pE + pS + pN + Alpha * bC) * InverseBeta;	
-		//dest[id] = (divergence[id] + (1.0*(p[IX(x+1,y)] + p[IX(x-1,y)] + p[IX(x,y+1)] + p[IX(x,y-1)]))) * .25;
 	}
 }
 
@@ -533,8 +545,7 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *b
 		float old_u = vel_u[id];
 		float old_v = vel_v[id];
 
-		// GradientScale is 1.125 / CellSize
-		float cellSize = 1.0;
+		//float cellSize = 1.0;
 		//float GradientScale = 1.125 / cellSize;
 		float GradientScale = 0.5 * float(w-2);
 		float grad_u = (pE - pW) * GradientScale;
@@ -554,7 +565,7 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *b
 
 
 __global__ void 
-Diffusion(float *_chem, float *_lap, float *_boundary, float _difConst, float dt, int w, int h) 
+Diffusion(float *_chem, float *_lap, float *_boundary, float _difConst, float xLen, float yLen, float dt, int w, int h) 
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -564,9 +575,10 @@ Diffusion(float *_chem, float *_lap, float *_boundary, float _difConst, float dt
 	if (checkBounds(_boundary, x, y, w, h)) {
 
 		// constants
-		//float xLength = (float)x/100.0;
-		float xLength = (float)x/1.21212;
-		float yLength = (float)y/1.21212;
+		//float xLength = (float)x/100.0; //gray-scott
+		//float xLength = (float)x/1.21212; //barkley model
+		float xLength = (float)x/xLen;
+		float yLength = (float)y/yLen;
 		float dx = (float)xLength/(float)x;
 		float dy = (float)yLength/(float)y;
 		float alpha = (float)(_difConst * dt / (float)(dx*dy));
@@ -586,12 +598,16 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, float *F_input, float *rd, float *_boundary, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, float *rd, float *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
 	if (checkBounds(_boundary, x, y, w, h)) {
+		float A = _chemA[id];
+		float B = _chemB[id];
+
+		// Gray-Scott
 		//float F = 0.05;
 		//float k = 0.0675;
 		//float F = 0.0140;
@@ -605,18 +621,14 @@ __global__ void React( float *_chemA, float *_chemB, float *F_input, float *rd, 
 		//k = fitRange(k, 0.0, 1.0, 0.05, 0.068); 
 		float F = rd[0];
 		float k = rd[1];
-		
-		float A = _chemA[id];
-		float B = _chemB[id];
 
-		// Gray-Scott
-		//float reactionA = -A * (B*B) + (F * (1.0-A));
-		//float reactionB = A * (B*B) - (F+k)*B;
+		float reactionA = -A * (B*B) + (F * (1.0-A));
+		float reactionB = A * (B*B) - (F+k)*B;
 
 		// Barkley Model
-		float e = 0.02;
-		float reactionA = A * (1-A) * ((A- (B+rd[1])/rd[0]) / e);
-		float reactionB = A - B;
+		//float e = 0.02;
+		//float reactionA = A * (1-A) * ((A- (B+rd[1])/rd[0]) / e);
+		//float reactionB = A - B;
 
 		_chemA[id] += (dt * reactionA);
 		_chemB[id] += (dt * reactionB);
