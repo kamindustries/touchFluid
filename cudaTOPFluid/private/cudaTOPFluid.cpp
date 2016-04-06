@@ -121,7 +121,13 @@ tCudaGetParamInfo(const TCUDA_NodeInfo *info, const TCUDA_ParamRequest *request,
 
 	else if (request->dataType == TCUDA_DATA_TYPE_CHOP) 
 	{
-		//reqResult->chop.dataLocation = TCUDA_DATA_LOCATION_DEVICE;
+		if (hasEnding(request->name, "CPU")) {
+			reqResult->chop.dataLocation = TCUDA_DATA_LOCATION_HOST;
+			//printf("  %s is on the CPU.\n", request->name);
+		}
+		else {
+			reqResult->chop.dataLocation = TCUDA_DATA_LOCATION_DEVICE;
+		}
 		return true;
 	}
 
