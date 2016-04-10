@@ -212,6 +212,14 @@ __global__ void AddFromUI ( float * field, float value, int x_coord, int y_coord
 	else return;
 }
 
+__global__ void AddFromUI ( float * field, float *valueUI, int index, int w, int h ) {
+	int x = getX(w);
+	int y = getY(h);
+	int id = IX(x,y);
+
+	field[id] += valueUI[4*id+index];
+}
+
 __global__ void AddFromUI ( float *u, float *v, float *valueUI, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
@@ -290,7 +298,7 @@ MakeColor(float *src0, float *src1, float *src2, float *dest, int w, int h)
 	int y = getY(h);
 	int id = IX(x,y);
 
-	rgbaToColor(dest, id, src0[id], src1[4*id+0], src2[id], 1.0);
+	rgbaToColor(dest, id, src0[id], src1[id], src2[id], 1.0);
 }
 
 
@@ -398,7 +406,7 @@ __device__ float curl(int i, int j, float *u, float *v)
 }
 
 __global__ void vorticityConfinement(float *u, float *v, float *Fvc_x, float *Fvc_y, float *_boundary, 
-								     float dt, int w, int h)
+								     float curlAmt, float dt, int w, int h)
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -430,14 +438,14 @@ __global__ void vorticityConfinement(float *u, float *v, float *Fvc_x, float *Fv
 
 		// N x w
 		// 0.5 = curl amount
-		Fvc_x[id] += (dw_dy * -vel * dt * 0.5);
-		Fvc_y[id] += (dw_dx *  vel * dt * 0.5);
+		Fvc_x[id] += (dw_dy * -vel * dt * curlAmt);
+		Fvc_y[id] += (dw_dx *  vel * dt * curlAmt);
 	}
 }
 
 
 __global__ void ApplyBuoyancy( float *vel_u, float *vel_v, float *temp, float *dens, 
-							   float *dest_u, float *dest_v, float ambientTemp, float dt, int w, int h)
+							   float *dest_u, float *dest_v, float ambientTemp, float buoyAmt, float dt, int w, int h)
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -452,10 +460,9 @@ __global__ void ApplyBuoyancy( float *vel_u, float *vel_v, float *temp, float *d
 		float Kappa = 0.05;
 		if (T > ambientTemp) {
 			float D = dens[id];
-			float dt0 = (float)dt;
 
-			dest_u[id] += (dt0 * (T - ambientTemp) * Sigma - D * Kappa) * 0;
-			dest_v[id] += (dt0 * (T - ambientTemp) * Sigma - D * Kappa) * .01;
+			dest_u[id] += (dt * (T - ambientTemp) * Sigma - D * Kappa) * 0;
+			dest_v[id] += (dt * (T - ambientTemp) * Sigma - D * Kappa) * buoyAmt;
 		}
 	}
 
@@ -469,10 +476,28 @@ __global__ void ComputeDivergence( float *u, float *v, float *boundary, float *d
 
 	//if (x > 2 && x < w-2 && y > 2 && y < h-2){
 	if (checkBounds(x, y, w, h)){
+		// Find neighboring velocities:
+		float vN = v[IX(x, y+1)];
+		float vS = v[IX(x, y-1)];
+		float vE = u[IX(x+1, y)];
+		float vW = u[IX(x-1, y)];
+
+		// Find neighboring obstacles:
+		int oN = boundary[4 * IX(x, y+1) + 0];
+		int oS = boundary[4 * IX(x, y-1) + 0];
+		int oE = boundary[4 * IX(x+1, y) + 0];
+		int oW = boundary[4 * IX(x-1, y) + 0];
+
+		// Use center pressure for solid cells:
+		//if (oN > 0) vN = boundary[4 * IX(x, y+1) + 1];
+		//if (oS > 0) vS = boundary[4 * IX(x, y-1) + 1];
+		//if (oE > 0) vE = boundary[4 * IX(x+1, y) + 2];
+		//if (oW > 0) vW = boundary[4 * IX(x-1, y) + 2];
+
 		//float cellSize = 1.0;
 		//dest[id] = (0.5 / cellSize) * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] );
 		//dest[id] = 0.5 * ( (u[IX(x+1, y)] - u[IX(x-1, y)]) + (v[IX(x, y+1)] - v[IX(x, y-1)]) ) ;
-		dest[id] = 0.5 * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] ) / float(w-2);
+		dest[id] = 0.5 * ( vE - vW + vN - vS ) / float(w-2);
 	}
 }
 
@@ -533,13 +558,14 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *b
 		int oW = boundary[4 * IX(x-1, y) + 0];
 
 		// Use center pressure for solid cells:
+		float obstU = 0.0;
 		float obstV = 0.0;
 		float vMask = 1.0;
 		
-		if (oN > 0) {pN = pC; vMask = 0.0; }
-		if (oS > 0) {pS = pC; vMask = 0.0; }
-		if (oE > 0) {pE = pC; vMask = 0.0; }
-		if (oW > 0) {pW = pC; vMask = 0.0; }
+		if (oN > 0) {pN = pC; obstV = boundary[4 * IX(x, y+1) + 1]; vMask = 0.0; }
+		if (oS > 0) {pS = pC; obstV = boundary[4 * IX(x, y-1) + 1]; vMask = 0.0; }
+		if (oE > 0) {pE = pC; obstU = boundary[4 * IX(x+1, y) + 2]; vMask = 0.0; }
+		if (oW > 0) {pW = pC; obstU = boundary[4 * IX(x+1, y) + 2]; vMask = 0.0; }
 	    
 		// Enforce the free-slip boundary condition:
 		float old_u = vel_u[id];
@@ -554,7 +580,9 @@ __global__ void SubtractGradient( float *vel_u, float *vel_v, float *p, float *b
 		float new_u = old_u - grad_u;
 		float new_v = old_v - grad_v;
 
-		dest_u[id] = (vMask * new_u) + obstV;
+		obstU = 0;
+		obstV = 0;
+		dest_u[id] = (vMask * new_u) + obstU;
 		dest_v[id] = (vMask * new_v) + obstV;
 	}
 	else {
@@ -598,7 +626,7 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, float *rd, float *_boundary, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, float F, float k, float *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
@@ -619,8 +647,6 @@ __global__ void React( float *_chemA, float *_chemB, float *rd, float *_boundary
 		//
 		//float k = 1.0 - (F_input[id]&0xff/255);
 		//k = fitRange(k, 0.0, 1.0, 0.05, 0.068); 
-		float F = rd[0];
-		float k = rd[1];
 
 		float reactionA = -A * (B*B) + (F * (1.0-A));
 		float reactionB = A * (B*B) - (F+k)*B;

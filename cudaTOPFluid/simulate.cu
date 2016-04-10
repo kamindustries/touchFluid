@@ -23,38 +23,49 @@ float *chemA, *chemA_prev, *chemB, *chemB_prev, *laplacian;
 float *vel[2], *vel_prev[2];
 float *pressure, *pressure_prev;
 float *temperature, *temperature_prev;
-float *density, *density_prev;
 float *divergence;
 float *boundary;
 
 // incoming data
 map<string, const TCUDA_ParamInfo*> nodes;
 float *mouse, *mouse_old;
-float *constants;
+float *globals, *advectionConstants, *rdConstants;
 const TCUDA_ParamInfo *mouseCHOP;
 const TCUDA_ParamInfo *densityTOP;
+const TCUDA_ParamInfo *tempTOP;
 const TCUDA_ParamInfo *boundaryTOP;
-const TCUDA_ParamInfo *rdCHOP;
-const TCUDA_ParamInfo *constCHOP;
+const TCUDA_ParamInfo *rdConstantsCHOP;
+const TCUDA_ParamInfo *globalsCHOP;
+const TCUDA_ParamInfo *advectionConstantsCHOP;
 const TCUDA_ParamInfo *resetCHOP;
 
+// Global constants
 float dt = 0.1f;
-float dA = 0.0002; // gray-scott
-float dB = 0.00001;
-float xLen = 100.0f;
-float yLen = 100.0f;
 int nDiff = 2;
 int nReact = 1;
 int nJacobi = 30;
 
+// RD constants
+float F = 0.05f;
+float k = 0.0675f;
+float dA = 0.0002f; // gray-scott
+float dB = 0.00001f;
+float xLen = 100.0f;
+float yLen = 100.0f;
 //float dt = .02f;
 //float dA = 0.75; // barkley model
 //float dB = 0.0;
 
+// Advection constnats
+float velDiff = .9999f;
+float tempDiff = .99f;
+float densDiff = 1.0f;
+float curlAmt = 1.0f;
+float buoyAmt = 0.005f;
+
 float diff = 0.00001f;
 float visc = 0.000001f;
 float force = 30.;
-float buoy = 0.0;
 float source_density = 2.0;
 float source_temp = .25;
 
@@ -69,9 +80,11 @@ bool findNodes(const int nparams, const TCUDA_ParamInfo **params){
 	// fill nodes<> with key/value pairs
 	nodes["mouse"] = mouseCHOP;
 	nodes["density"] = densityTOP;
+	nodes["temp"] = tempTOP;
 	nodes["boundary"] = boundaryTOP;
-	nodes["rdCHOP"] = rdCHOP;
-	nodes["constants"] = rdCHOP;
+	nodes["rd"] = rdConstantsCHOP;
+	nodes["globals"] = globalsCHOP;
+	nodes["advection"] = advectionConstantsCHOP;
 	nodes["reset"] = resetCHOP;
 
 
@@ -103,14 +116,38 @@ bool findNodes(const int nparams, const TCUDA_ParamInfo **params){
 
 }
 
-void getConstants() {
-	// constants[] = {dt, xLen, yLen, nDiff, nReact, nJacobi}
-	dt = constants[0];
-	xLen = constants[1];
-	yLen = constants[2];
-	nDiff = (int)constants[3];
-	nReact = (int)constants[4];
-	nJacobi = (int)constants[5];
+void getGlobals() {
+	// globals[] = {dt, nDiff, nReact, nJacobi}
+	dt = globals[0];
+	nDiff = (int)globals[1];
+	nReact = (int)globals[2];
+	nJacobi = (int)globals[3];
+}
+
+void getAdvectionConstants() {
+	// advectionConstants[] = {velDiff, tempDiff, densDiff, curl, buoyancy}
+	velDiff = advectionConstants[0];
+	tempDiff = advectionConstants[1];
+	densDiff = advectionConstants[2];
+	curlAmt = advectionConstants[3];
+	buoyAmt = advectionConstants[4];
+}
+
+void getRdConstants() {
+	// advectionConstants[] = {velDiff, tempDiff, densDiff, curl, buoyancy}
+	F = rdConstants[0];
+	printf("1\n");
+
+	k = rdConstants[1];
+	printf("2\n");
+	dA = rdConstants[2];
+	printf("3\n");
+	dB = rdConstants[3];
+	printf("4\n");
+	xLen = (int)rdConstants[4];
+	printf("5\n");
+	yLen = (int)rdConstants[5];
+	printf("6\n");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -139,12 +176,21 @@ void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_outp
 		mouse_old[0]=mouse[1];
 	}
 
-	// Allocate constants array
-	constants = (float*)malloc(sizeof(float)*nodes["constants"]->chop.numChannels);
+	// Allocate arrays for local constants
+	globals = (float*)malloc(sizeof(float)*nodes["globals"]->chop.numChannels);
+	advectionConstants = (float*)malloc(sizeof(float)*nodes["advection"]->chop.numChannels);
+	rdConstants = (float*)malloc(sizeof(float)*nodes["rd"]->chop.numChannels);
+
+	// Local constants pointers points to CHOP nodes
+	globals = (float*)nodes["globals"]->data;
+	advectionConstants = (float*)nodes["advection"]->data;
+	rdConstants = (float*)nodes["rd"]->data;
 	
-	// Local constants pointer points to CHOP node
-	constants = (float*)nodes["constants"]->data;
-	getConstants();
+	// Get local variables
+	getGlobals();
+	getAdvectionConstants();
+	getRdConstants();
+	printf ("Got local assignments\n");
 
 	printf("initVariables(): done.\n");
 }
@@ -162,16 +208,14 @@ void initCUDA()
 	cudaMalloc((void**)&boundary, sizeof(float)*size * 4);
 
 	for (int i=0; i<2; i++){
-		cudaMalloc((void**)&vel[i], sizeof(int)*size);
-		cudaMalloc((void**)&vel_prev[i], sizeof(int)*size);
+		cudaMalloc((void**)&vel[i], sizeof(float)*size);
+		cudaMalloc((void**)&vel_prev[i], sizeof(float)*size);
 	}
 
 	cudaMalloc((void**)&pressure, sizeof(float)*size );
 	cudaMalloc((void**)&pressure_prev, sizeof(float)*size );
 	cudaMalloc((void**)&temperature, sizeof(float)*size );
 	cudaMalloc((void**)&temperature_prev, sizeof(float)*size );
-	cudaMalloc((void**)&density, sizeof(float)*size );
-	cudaMalloc((void**)&density_prev, sizeof(float)*size );
 	cudaMalloc((void**)&divergence, sizeof(float)*size );
 
 	printf("initCUDA(): Allocated GPU memory.\n");
@@ -198,8 +242,6 @@ void initArrays()
   ClearArray<<<grid,threads>>>(pressure_prev, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(temperature, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(temperature_prev, 0.0, dimX, dimY);
-  ClearArray<<<grid,threads>>>(density, 0.0, dimX, dimY);
-  ClearArray<<<grid,threads>>>(density_prev, 0.0, dimX, dimY);
   ClearArray<<<grid,threads>>>(divergence, 0.0, dimX, dimY);
 
   printf("initArrays(): Initialized GPU arrays.\n");
@@ -244,11 +286,16 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	
 	// Apply obstacle velocity
 	AddFromUI<<<grid,threads>>>(_u, _v, (float*)nodes["boundary"]->data, dimX, dimY);
+
+	// Appy temperature, index == bgra == 0,1,2,3
+	AddFromUI<<<grid,threads>>>(_temp, (float*)nodes["temp"]->data, 1, dimX, dimY);
 	
 	// Update mouse and constants info
+	getGlobals();
+	getAdvectionConstants();
+	getRdConstants();
 	// mouse[] = {x, y, LMB, RMB, MMB, wheel}
-	//mouse = (float*)nodes["mouse"]->data;
-	getConstants();
+	// mouse = (float*)nodes["mouse"]->data;
 
 	if ( mouse[2] < 1.0 && mouse[3] < 1.0 ) return;
 
@@ -291,7 +338,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 {
 
 	// Naive ARD-----------------------
-	//AddSource<<<grid,threads>>>(_chemB, _chemB0, dt, dimX, dimY);
+	AddSource<<<grid,threads>>>(_chemB, _chemB0, dt, dimX, dimY);
 	//AddSource<<<grid,threads>>>(_chemA, _chemA0, dt, dimX, dimY);
 	_chemA0 = _chemA;
 	_chemB0 = _chemB;
@@ -303,11 +350,11 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 
 		Diffusion<<<grid,threads>>>(_chemB, laplacian, bounds, dB, xLen, yLen, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(_chemB, laplacian, dimX, dimY);
-		SetBoundary<<<grid,threads>>>(0, chemB, bounds, dimX, dimY);
+		SetBoundary<<<grid,threads>>>(0, _chemB, bounds, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
 		for (int j = 0; j < nReact; j++){
-			React<<<grid,threads>>>( _chemA, _chemB, (float*)nodes["rdCHOP"]->data, bounds, dt, dimX, dimY );
+			React<<<grid,threads>>>( _chemA, _chemB, F, k, bounds, dt, dimX, dimY );
 		}
 	}
 
@@ -316,11 +363,11 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 
 	// Density advection: chemB
 	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], _chemA0, bounds, _chemA,
-							dt, 1.0, true, dimX, dimY);
+							dt, densDiff, true, dimX, dimY);
 
 	// Density advection: chemB
 	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], _chemB0, bounds, _chemB,
-							dt, 1.0, true, dimX, dimY);
+							dt, densDiff, true, dimX, dimY);
 }
 
 
@@ -333,24 +380,25 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 	// Velocity advection
 	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], vel_prev[0], vel_prev[1],
 								(float*)nodes["boundary"]->data, vel[0], vel[1], 
-								dt, .9995, dimX, dimY);
+								dt, velDiff, dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
 	// Temperature advection
 	Advect<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, (float*)nodes["boundary"]->data, temperature,
-							dt, .99, false, dimX, dimY);
+							dt, tempDiff, false, dimX, dimY);
 	SWAP(temperature_prev, temperature);
 
 	// Vorticity Confinement
-	vorticityConfinement<<<grid,threads>>>( vel[0], vel[1], vel_prev[0], vel_prev[1], 
-											(float*)nodes["boundary"]->data, dt, dimX, dimY);
+	vorticityConfinement<<<grid,threads>>>( vel[0], vel[1], vel_prev[0], vel_prev[1], (float*)nodes["boundary"]->data, 
+											curlAmt, dt, dimX, dimY);
 		
 	float Tamb = 0.0;
 	getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
-	Tamb /= float(dimX * dimY);
-	ApplyBuoyancy<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, chemB_prev,
-									vel[0], vel[1], Tamb, dt, dimX, dimY);
+	printf("%f\n", Tamb);
+	Tamb /= (float(dimX) * float(dimY));
+	ApplyBuoyancy<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, chemB,
+									vel[0], vel[1], Tamb, buoyAmt, dt, dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
@@ -377,7 +425,8 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 	SWAP(vel_prev[1], vel[1]);
 
 
-	MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
+	//MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
+	MakeColor<<<grid,threads>>>(temperature, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
 	//MakeColor<<<grid,threads>>>(chemB, (float*)nodes["boundary"]->data, chemB, (float*)output->data, dimX, dimY);
 
 }
@@ -401,6 +450,7 @@ extern "C"
 		}
 
 		if (initialized) {
+			// Reset to initial values if reset button is pressed
 			if (*(float*)nodes["reset"]->data > 0.0f) {
 				initArrays();
 			}
