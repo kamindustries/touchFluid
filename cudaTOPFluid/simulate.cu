@@ -136,18 +136,11 @@ void getAdvectionConstants() {
 void getRdConstants() {
 	// advectionConstants[] = {velDiff, tempDiff, densDiff, curl, buoyancy}
 	F = rdConstants[0];
-	printf("1\n");
-
 	k = rdConstants[1];
-	printf("2\n");
 	dA = rdConstants[2];
-	printf("3\n");
 	dB = rdConstants[3];
-	printf("4\n");
 	xLen = (int)rdConstants[4];
-	printf("5\n");
 	yLen = (int)rdConstants[5];
-	printf("6\n");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -395,7 +388,6 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 		
 	float Tamb = 0.0;
 	getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
-	printf("%f\n", Tamb);
 	Tamb /= (float(dimX) * float(dimY));
 	ApplyBuoyancy<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, chemB,
 									vel[0], vel[1], Tamb, buoyAmt, dt, dimX, dimY);
