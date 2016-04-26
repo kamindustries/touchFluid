@@ -70,7 +70,7 @@ float source_density = 2.0;
 float source_temp = .25;
 
 // ffmpeg -i [input] -c:v libvpx -b:v 1M [output].webm
-// ffmpeg -i [input] -c:v libx264 -b:v 1M [output].webm
+// ffmpeg -i [input] -c:v libx264 -b:v 1M [output].mp4
 
 ///////////////////////////////////////////////////////////////////////////////
 // Find connected nodes for easier reference in a map
