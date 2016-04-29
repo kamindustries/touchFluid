@@ -418,7 +418,7 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 
 
 	//MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
-	MakeColor<<<grid,threads>>>(temperature, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
+	MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
 	//MakeColor<<<grid,threads>>>(chemB, (float*)nodes["boundary"]->data, chemB, (float*)output->data, dimX, dimY);
 
 }
