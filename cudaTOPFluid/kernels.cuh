@@ -39,7 +39,7 @@ __device__ int
 getX(int w) 
 {
 	int x = threadIdx.x + (blockIdx.x * blockDim.x);
-	//if (x >= w) x = 0; if (x < 0) x = w-1;
+	if (x >= w) x = 0; if (x < 0) x = w-1;
 	return x;
 }
 
@@ -47,7 +47,7 @@ __device__ int
 getY(int h) 
 {
 	int y = threadIdx.y + (blockIdx.y * blockDim.y);
-	//if (y >= h) y = 0; if (y < 0) y = h-1;
+	if (y >= h) y = 0; if (y < 0) y = h-1;
 	return y;
 }
 
@@ -103,7 +103,6 @@ rgbaToColor(float *dest, int id, float r, float g, float b, float a)
 	dest[4*id+1] = g;
 	dest[4*id+2] = r;
 	dest[4*id+3] = a;
-
 }
 
 // Set boundary conditions
@@ -200,33 +199,33 @@ ClearArray(int *field, float value, int w, int h)
 }
 
 // How can I template these?
-__global__ void AddFromUI ( float * field, float value, int x_coord, int y_coord, int w, int h ) {
+__global__ void AddFromUI ( float *field, float value, float dt, int x_coord, int y_coord, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
 	if (x>x_coord-5 && x<x_coord+5 && y>y_coord-5 && y<y_coord+5){
 		// if (x == x_coord && y==y_coord){
-		field[id] += value;
+		field[id] += value * dt;
 	}
 	else return;
 }
 
-__global__ void AddFromUI ( float * field, float *valueUI, int index, int w, int h ) {
+__global__ void AddFromUI ( float *field, float *valueUI, int index, float dt, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
-	field[id] += valueUI[4*id+index];
+	field[id] += valueUI[4*id+index] * dt;
 }
 
-__global__ void AddFromUI ( float *u, float *v, float *valueUI, int w, int h ) {
+__global__ void AddObstacleVelocity ( float *u, float *v, float *obstacle, float dt, int w, int h ) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
 
-	u[id] += valueUI[4*id+2]; //red
-	v[id] += valueUI[4*id+1]; //green
+	u[id] += obstacle[4*id+2] * dt; //red
+	v[id] += obstacle[4*id+1] * dt; //green
 }
 
 __global__ void SetFromUI ( float *A, float *B, float *valueUI, int w, int h ) {
@@ -312,6 +311,27 @@ MakeColor(float *src0, float *src1, float *src2, float *src3, float *dest, int w
 	rgbaToColor(dest, id, src0[id], src1[id], src2[id], src3[id]);
 }
 
+__global__ void
+MakeColorLong(	float *r1, float *g1, float *b1, float *a1, 
+				float *r2, float *g2, float *b2, float *a2,
+				float *dest, int w, int h, int stride)
+{
+	int idIn = getY(h) * w + (getX(w));
+	int idOut = getY(h) * (w*stride) + (getX(w*stride));
+
+	//Left image
+	dest[4*idOut+0] = b1[idIn];
+	dest[4*idOut+1] = g1[idIn];
+	dest[4*idOut+2] = r1[idIn];
+	dest[4*idOut+3] = a1[idIn];
+
+	//Right image
+	idOut += w;
+	dest[4*idOut+0] = b2[idIn];
+	dest[4*idOut+1] = g2[idIn];
+	dest[4*idOut+2] = r2[idIn];
+	dest[4*idOut+3] = 1.0;
+}
 
 __global__ void TEST (float *test, int w, int h)
 {
@@ -445,7 +465,8 @@ __global__ void vorticityConfinement(float *u, float *v, float *Fvc_x, float *Fv
 
 
 __global__ void ApplyBuoyancy( float *vel_u, float *vel_v, float *temp, float *dens, 
-							   float *dest_u, float *dest_v, float ambientTemp, float buoyAmt, float dt, int w, int h)
+							   float *dest_u, float *dest_v, float ambientTemp, float buoy, float weight, 
+							   float dt, int w, int h)
 {
 	int x = getX(w);
 	int y = getY(h);
@@ -456,13 +477,13 @@ __global__ void ApplyBuoyancy( float *vel_u, float *vel_v, float *temp, float *d
 		dest_v[id] = vel_v[id]; 
 	
 		float T = temp[id];
-		float Sigma = 1.0;
-		float Kappa = 0.05;
+		float Sigma = buoy;
+		float Kappa = weight;
 		if (T > ambientTemp) {
 			float D = dens[id];
 
 			dest_u[id] += (dt * (T - ambientTemp) * Sigma - D * Kappa) * 0;
-			dest_v[id] += (dt * (T - ambientTemp) * Sigma - D * Kappa) * buoyAmt;
+			dest_v[id] += (dt * (T - ambientTemp) * Sigma - D * Kappa) * .1;
 		}
 	}
 

@@ -29,7 +29,7 @@ float *boundary;
 // incoming data
 map<string, const TCUDA_ParamInfo*> nodes;
 float *mouse, *mouse_old;
-float *globals, *advectionConstants, *rdConstants;
+float *res, *globals, *advectionConstants, *rdConstants;
 const TCUDA_ParamInfo *mouseCHOP;
 const TCUDA_ParamInfo *densityTOP;
 const TCUDA_ParamInfo *tempTOP;
@@ -38,6 +38,7 @@ const TCUDA_ParamInfo *rdConstantsCHOP;
 const TCUDA_ParamInfo *globalsCHOP;
 const TCUDA_ParamInfo *advectionConstantsCHOP;
 const TCUDA_ParamInfo *resetCHOP;
+const TCUDA_ParamInfo *fluidResCHOP;
 
 // Global constants
 float dt = 0.1f;
@@ -61,13 +62,14 @@ float velDiff = .9999f;
 float tempDiff = .99f;
 float densDiff = 1.0f;
 float curlAmt = 1.0f;
-float buoyAmt = 0.005f;
+float buoy = 1.0f;
+float weight = 0.05f;
 
 float diff = 0.00001f;
 float visc = 0.000001f;
-float force = 30.;
-float source_density = 2.0;
-float source_temp = .25;
+float force = 300.;
+float source_density = 10.0;
+float source_temp = 2.0;
 
 // ffmpeg -i [input] -c:v libvpx -b:v 1M [output].webm
 // ffmpeg -i [input] -c:v libx264 -b:v 1M [output].mp4
@@ -86,6 +88,7 @@ bool findNodes(const int nparams, const TCUDA_ParamInfo **params){
 	nodes["globals"] = globalsCHOP;
 	nodes["advection"] = advectionConstantsCHOP;
 	nodes["reset"] = resetCHOP;
+	nodes["fluidRes"] = fluidResCHOP;
 
 
 	// search incoming params[] for matching name and assigne nodes<> value to it
@@ -125,12 +128,13 @@ void getGlobals() {
 }
 
 void getAdvectionConstants() {
-	// advectionConstants[] = {velDiff, tempDiff, densDiff, curl, buoyancy}
+	// advectionConstants[] = {velDiff, tempDiff, densDiff, curl, buoyancy, weight}
 	velDiff = advectionConstants[0];
 	tempDiff = advectionConstants[1];
 	densDiff = advectionConstants[2];
 	curlAmt = advectionConstants[3];
-	buoyAmt = advectionConstants[4];
+	buoy = advectionConstants[4];
+	weight = advectionConstants[5];
 }
 
 void getRdConstants() {
@@ -151,6 +155,13 @@ void initVariables(const TCUDA_ParamInfo **_params, const TCUDA_ParamInfo *_outp
 	// Set container dimensions to whatever the incoming TOP is set to
 	dimX = _output->top.width;
 	dimY = _output->top.height;
+	
+	res = (float*)malloc(sizeof(float)*nodes["fluidRes"]->chop.numChannels);
+	res = (float*)nodes["fluidRes"]->data;
+
+	dimX = res[0];
+	dimX = res[1];
+
 	size = dimX * dimY;
 
 	threads = dim3(16,16);
@@ -277,11 +288,11 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	// Apply incoming density
 	SetFromUI<<<grid,threads>>>(chemA, chemB, (float*)nodes["density"]->data, dimX, dimY);
 	
-	// Apply obstacle velocity
-	AddFromUI<<<grid,threads>>>(_u, _v, (float*)nodes["boundary"]->data, dimX, dimY);
-
 	// Appy temperature, index == bgra == 0,1,2,3
-	AddFromUI<<<grid,threads>>>(_temp, (float*)nodes["temp"]->data, 1, dimX, dimY);
+	AddFromUI<<<grid,threads>>>(_temp, (float*)nodes["temp"]->data, 0, dt, dimX, dimY);
+
+	// Apply obstacle velocity
+	AddObstacleVelocity<<<grid,threads>>>(_u, _v, (float*)nodes["boundary"]->data, dt, dimX, dimY);
 	
 	// Update mouse and constants info
 	getGlobals();
@@ -303,13 +314,13 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	if (i<1 || i>dimX || j<1 || j>dimY ) return;
 
 	if (mouse[2] > 0.0 && mouse[3] > 0.0) {
-		AddFromUI<<<grid,threads>>>(_u, x_diff * force, i, j, dimX, dimY);
-		AddFromUI<<<grid,threads>>>(_v, y_diff * force, i, j, dimX, dimY);
+		AddFromUI<<<grid,threads>>>(_u, x_diff * force, dt, i, j, dimX, dimY);
+		AddFromUI<<<grid,threads>>>(_v, y_diff * force, dt, i, j, dimX, dimY);
 	}
 
 	if (mouse[3] > 0.0) {
-		AddFromUI<<<grid,threads>>>(_dens, source_density, i, j, dimX, dimY);
-		AddFromUI<<<grid,threads>>>(_temp, source_temp, i, j, dimX, dimY);
+		AddFromUI<<<grid,threads>>>(_dens, source_density, dt, i, j, dimX, dimY);
+		AddFromUI<<<grid,threads>>>(_temp, source_temp, dt, i, j, dimX, dimY);
 		//GetFromUI<<<grid,threads>>>(_chemB0, source_density, i, j, dimX, dimY);
 		//particleSystem.addParticles(mouse[0], mouse[1], 100, .04);
 	}
@@ -390,7 +401,7 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 	getSum<<<grid,threads>>>(temperature_prev, Tamb, dimX, dimY);
 	Tamb /= (float(dimX) * float(dimY));
 	ApplyBuoyancy<<<grid,threads>>>(vel_prev[0], vel_prev[1], temperature_prev, chemB,
-									vel[0], vel[1], Tamb, buoyAmt, dt, dimX, dimY);
+									vel[0], vel[1], Tamb, buoy, weight, dt, dimX, dimY);
 	SWAP(vel_prev[0], vel[0]);
 	SWAP(vel_prev[1], vel[1]);
 
@@ -418,7 +429,10 @@ static void simulate(const TCUDA_ParamInfo **params, const TCUDA_ParamInfo *outp
 
 
 	//MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
-	MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
+	//MakeColor<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], (float*)output->data, dimX, dimY);
+	MakeColorLong<<<grid,threads>>>(chemA, chemB, vel[0], vel[1], 
+									temperature, pressure, divergence, temperature,
+									(float*)output->data, dimX, dimY, 2);
 	//MakeColor<<<grid,threads>>>(chemB, (float*)nodes["boundary"]->data, chemB, (float*)output->data, dimX, dimY);
 
 }
