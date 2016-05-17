@@ -32,7 +32,6 @@ float *mouse, *mouse_old;
 float *res, *globals, *advectionConstants, *rdConstants;
 const TCUDA_ParamInfo *mouseCHOP;
 const TCUDA_ParamInfo *densityTOP;
-const TCUDA_ParamInfo *tempTOP;
 const TCUDA_ParamInfo *boundaryTOP;
 const TCUDA_ParamInfo *rdConstantsCHOP;
 const TCUDA_ParamInfo *globalsCHOP;
@@ -53,6 +52,8 @@ float dA = 0.0002f; // gray-scott
 float dB = 0.00001f;
 float xLen = 100.0f;
 float yLen = 100.0f;
+int rdEquation = 0;
+float e = .02;
 //float dt = .02f;
 //float dA = 0.75; // barkley model
 //float dB = 0.0;
@@ -81,8 +82,7 @@ bool findNodes(const int nparams, const TCUDA_ParamInfo **params){
 
 	// fill nodes<> with key/value pairs
 	nodes["mouse"] = mouseCHOP;
-	nodes["density"] = densityTOP;
-	nodes["temp"] = tempTOP;
+	nodes["density"] = densityTOP; //density and temperature: rgba = chemA, chemB, temperature
 	nodes["boundary"] = boundaryTOP;
 	nodes["rd"] = rdConstantsCHOP;
 	nodes["globals"] = globalsCHOP;
@@ -145,6 +145,8 @@ void getRdConstants() {
 	dB = rdConstants[3];
 	xLen = (int)rdConstants[4];
 	yLen = (int)rdConstants[5];
+	rdEquation = (int)rdConstants[6];
+	e = rdConstants[7];
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -285,11 +287,12 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	//DrawSquare<<<grid,threads>>>(chemA, 1.0, dimX, dimY);
 	//DrawSquare<<<grid,threads>>>(chemB, 0.75 * .5, dimX, dimY);
 	
-	// Apply incoming density
-	SetFromUI<<<grid,threads>>>(chemA, chemB, (float*)nodes["density"]->data, dimX, dimY);
-	
-	// Appy temperature, index == bgra == 0,1,2,3
-	AddFromUI<<<grid,threads>>>(_temp, (float*)nodes["temp"]->data, 0, dt, dimX, dimY);
+	// Apply incoming density and temperature
+	// bgra == 0,1,2,3 == temperature, chemA, chemB == index
+	AddFromUI<<<grid,threads>>>(_temp, (float*)nodes["density"]->data, 0, dt, dimX, dimY);
+	AddFromUI<<<grid,threads>>>(chemB, (float*)nodes["density"]->data, 1, dt, dimX, dimY);
+	AddFromUI<<<grid,threads>>>(chemA, (float*)nodes["density"]->data, 2, dt, dimX, dimY);
+	//SetFromUI<<<grid,threads>>>(chemA, chemB, (float*)nodes["density"]->data, dimX, dimY);
 
 	// Apply obstacle velocity
 	AddObstacleVelocity<<<grid,threads>>>(_u, _v, (float*)nodes["boundary"]->data, dt, dimX, dimY);
@@ -298,8 +301,6 @@ void get_from_UI(const TCUDA_ParamInfo **params, float *_temp, float *_dens, flo
 	getGlobals();
 	getAdvectionConstants();
 	getRdConstants();
-	// mouse[] = {x, y, LMB, RMB, MMB, wheel}
-	// mouse = (float*)nodes["mouse"]->data;
 
 	if ( mouse[2] < 1.0 && mouse[3] < 1.0 ) return;
 
@@ -358,7 +359,7 @@ void dens_step (  float *_chemA, float *_chemA0, float *_chemB, float *_chemB0,
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
 		for (int j = 0; j < nReact; j++){
-			React<<<grid,threads>>>( _chemA, _chemB, F, k, bounds, dt, dimX, dimY );
+			React<<<grid,threads>>>( _chemA, _chemB, F, k, e, rdEquation, bounds, dt, dimX, dimY );
 		}
 	}
 

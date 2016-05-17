@@ -13,7 +13,7 @@ void main()
 	TDCheckOrderIndTrans();
 	// fragColor[0] = vVert.color;
 	vec2 coord = (gl_PointCoord.xy * vec2(2.)) - vec2(1.);
-	float dist =  sqrt(dot(coord, coord));
+	float dist =  sqrt(dot(coord, coord)); //make circle sprites
 
 	vec4 cd = vVert.color;
 	if (dist > 1.) cd = vec4(0.0);

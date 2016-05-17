@@ -14,6 +14,19 @@ out Vertex {
 	vec3 norm;
 }vVert;
 
+// Tukey Windowing
+// sig expected to be in 0-1 range
+float tukeyWindow(float sig, float alpha) {
+	if (alpha == 0.) // rectangular window
+		return 1.;
+	else if (sig < alpha / 2.)
+		return 0.5 * (1. + cos(2.*3.1459265/alpha * (sig-alpha/2.)));
+	else if (sig > 1.-alpha/2.)
+		return 0.5 * (1. + cos(2.*3.1459265/alpha * (sig-1.+alpha/2.)));
+	else
+		return 1.;
+}
+
 void main()
 {
   float h = 0.5/res; //needs to be 1/2 / res for center of pixel
@@ -42,10 +55,10 @@ void main()
 	vec4 cd = texture2D(colors, tcoord);
 	vVert.color = cd;
 
-	// Setting point size to value so black dots dont show up
-	float age = texture2D(life, tcoord).r * 2.;
-	float ptSize = age;
-	if (ptSize < .5) ptSize = .5;
+	// Tukey window
+	float ptSize = tukeyWindow(1.-texture2D(life, tcoord).r, 0.01);
+	ptSize *= 1.5;
+	if (ptSize < 1.) ptSize = 0.;
 
 	gl_PointSize = ptSize;
 
