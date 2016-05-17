@@ -647,7 +647,7 @@ AddLaplacian( float *_chem, float *_lap, int w, int h)
 	_chem[id] += _lap[id];
 }
 
-__global__ void React( float *_chemA, float *_chemB, float F, float k, float *_boundary, float dt, int w, int h) {
+__global__ void React( float *_chemA, float *_chemB, float F, float k, float e, int rdEquation, float *_boundary, float dt, int w, int h) {
 	int x = getX(w);
 	int y = getY(h);
 	int id = IX(x,y);
@@ -655,6 +655,7 @@ __global__ void React( float *_chemA, float *_chemB, float F, float k, float *_b
 	if (checkBounds(_boundary, x, y, w, h)) {
 		float A = _chemA[id];
 		float B = _chemB[id];
+		float reactionA, reactionB;
 
 		// Gray-Scott
 		//float F = 0.05;
@@ -669,13 +670,23 @@ __global__ void React( float *_chemA, float *_chemB, float F, float k, float *_b
 		//float k = 1.0 - (F_input[id]&0xff/255);
 		//k = fitRange(k, 0.0, 1.0, 0.05, 0.068); 
 
-		float reactionA = -A * (B*B) + (F * (1.0-A));
-		float reactionB = A * (B*B) - (F+k)*B;
+		if (A > 1.) A = 1.; if (B > 1.) B = 1.;
 
 		// Barkley Model
-		//float e = 0.02;
-		//float reactionA = A * (1-A) * ((A- (B+rd[1])/rd[0]) / e);
-		//float reactionB = A - B;
+		if (rdEquation == 1) {
+			reactionA = A * (1-A) * ((A- (B+k)/F) / e) * dt;
+			reactionB = (A - B) * dt;
+		}
+		// Barkley Turbulence
+		else if (rdEquation == 2) {
+			reactionA = A * (1-A) * ((A- (B+k)/F) / e) * dt;
+			reactionB = (A*A*A - B) * dt;
+		}
+		// Gray-Scott
+		else {
+			reactionA = -A * (B*B) + (F * (1.0-A));
+			reactionB = A * (B*B) - (F+k)*B;
+		}
 
 		_chemA[id] += (dt * reactionA);
 		_chemB[id] += (dt * reactionB);
