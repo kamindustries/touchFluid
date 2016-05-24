@@ -2,9 +2,12 @@ uniform sampler2D positions;
 uniform sampler2D normals;
 uniform sampler2D colors;
 uniform sampler2D life;
-uniform float res;
 
-float increment = 1/res;
+uniform float res;
+uniform float lifespan;
+uniform float size;
+
+float increment = 1./res;
 in float pID;
 
 out Vertex {
@@ -56,9 +59,17 @@ void main()
 	vVert.color = cd;
 
 	// Tukey window
-	float ptSize = tukeyWindow(1.-texture2D(life, tcoord).r, 0.01);
-	ptSize *= 1.5;
-	if (ptSize < 1.) ptSize = 0.;
+	float tukeyLength = .22;
+	tukeyLength *= clamp((1. - lifespan), .1, 1.);
+	float ptSize = tukeyWindow(1.-texture2D(life, tcoord).r, tukeyLength);
+
+	float sizeMult = size + .5;
+	// sizeMult *= 2.;
+	sizeMult *= sizeMult;
+	sizeMult *= 5.;
+	ptSize *= sizeMult;
+
+	if (ptSize < .5) ptSize = 0.;
 
 	gl_PointSize = ptSize;
 

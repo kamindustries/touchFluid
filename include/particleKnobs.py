@@ -1,0 +1,17 @@
+name	knobFam
+Nvis	3
+lifespan	3
+size	3
+softEdge	3
+inColorMix	3	
+velColor	3
+spawnMode	3
+Nsim	3
+massHigh	3
+massLow	3
+mmHigh	3
+mmLow	3
+hue	3
+sat	3
+val	3
+trails	3
