@@ -26,6 +26,12 @@
 *.dmp
 CrashAutoSave*
 cudaTOPFluid2
+cudaParticles
+*.mp4
+*.ai
+*.svg
+*.psd
+shaders_depreciated
 
 ##################################################################################
 ### VisualStudio ###

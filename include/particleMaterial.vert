@@ -60,16 +60,16 @@ void main()
 
 	// Tukey window
 	float tukeyLength = .22;
-	tukeyLength *= clamp((1. - lifespan), .1, 1.);
+	// tukeyLength *= clamp((1. - lifespan), .1, 1.);
+	tukeyLength *= clamp((1. - lifespan), .01, 1.);
 	float ptSize = tukeyWindow(1.-texture2D(life, tcoord).r, tukeyLength);
 
 	float sizeMult = size + .5;
-	// sizeMult *= 2.;
 	sizeMult *= sizeMult;
 	sizeMult *= 5.;
 	ptSize *= sizeMult;
 
-	if (ptSize < .5) ptSize = 0.;
+	if (ptSize < .25) ptSize = 0.;
 
 	gl_PointSize = ptSize;
 

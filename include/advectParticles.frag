@@ -15,6 +15,8 @@ uniform float lifespan;
 uniform float spawnMode;
 uniform float velColor;
 uniform vec3 hsv;
+uniform float hueRotation;
+uniform float colorMix;
 float increment = 1.0/res;
 
 int POS_OLD = 0;
@@ -139,18 +141,21 @@ void main() {
         velCd.x = 1.4;
         velCd.y = hsv.y;
         // velCd.z = atan(velocity.x, velocity.y);
-        velCd.z = hsv.x * 3.1459 * 2.;
+        float hue = hueRotation;
+        velCd.z = hueRotation;
       velCd = bch2rgb(velCd);
+
       color = texture2D(sTD2DInputs[COLOR_NEW], posCoord);
-      color.rgb = mix(color.rgb, velCd, velColor);
+      color.rgb = mix(color.rgb, velCd, colorMix);
       color.a = 1.;
       //-------------------
 
       life = 1.;
       life_var = texture2D(sTD2DInputs[NOISE], r3).g;
       life_var = fit(life_var, 0., 1., .5, 1.);
-      // life_var *= .001;
-      life_var = life_var * (.01 - (lifespan * .01));
+
+      life_var = life_var * ((1.-lifespan + .01) * .01);
+      // life_var = life_var * (.01 - (lifespan * .009999));
       // life_var = 0.;
       // life_var = .005;
     } //SPAWN
@@ -169,7 +174,8 @@ void main() {
       velocity = velocity * (mass * 1. ) * dt + velocity_old * momentum; // how is fluid force related to the *.1?
 
       // Get the magnitude
-      float mag = sqrt(velocity.x*velocity.x + velocity.y*velocity.y);
+      float velAmp = velocity.x*velocity.x + velocity.y*velocity.y;
+      float mag = sqrt(velAmp);
       float mag_old = sqrt(velocity_old.x*velocity_old.x + velocity_old.y*velocity_old.y);
       float accel = (abs(mag-mag_old))/.1;
 
@@ -179,9 +185,15 @@ void main() {
       // color.rgb = clamp(color.rgb, .1, 1.);
       // if (luminance(color.rgb) < .5) color.rgb += sqrt(mag * .5) * velColor;
 
+      // mixing velocity
+      // if knob is < .5, just offset hue
+      // if knob is > .5, mult against magnitude
+      float velLumMix = (velColor > .5) ? fit(velColor, .5, 1., 0., 1.) : 0.;
+      float velHueMix = (velColor < .5) ? fit(velColor, 0., 1., 0., 1.) : fit(velColor, .5, 1., 1., 0.);
+
       color.rgb = rgb2bch(color.rgb);
-        color.x = hsv.z;
-        color.z += mag*10.;
+        color.x = mix(1.4 * hsv.z, mag*200., velLumMix);
+        color.z = mix(color.z, mag*20., velHueMix);
       color.rgb = bch2rgb(color.rgb);
 
 

@@ -1,4 +1,6 @@
 uniform float spare1;
+uniform vec2 bchRotation;
+
 out vec4 fragColor;
 
 void main() {
@@ -26,6 +28,9 @@ void main() {
 		bch.r = (chemA*chemA) + (chemB*chemB);
 		bch.r = chemA + chemB;
 
+
+		bch.r = smoothstep(0., 1., bch.r);
+
 		bch.g = 1.-clamp(chemB*chemB, 0., 1.);
 		bch.g *= (mag*10.);
 		// float sat = mag*10.;
@@ -34,7 +39,8 @@ void main() {
 
 		bch.b = atan(velU, velV);
 		// bch.b = cd2.r;
-	bch = bch2rgb(bch);
+	vec2 bchRot = bchRotation * 3.1415963 * 2.;
+	bch = bch2rgb(bch, bchRot.x, bchRot.y);
 
 	cd = vec4(bch, 1.);
 

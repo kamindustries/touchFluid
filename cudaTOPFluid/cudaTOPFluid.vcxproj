@@ -162,6 +162,8 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <CudaCompile Include="Fluid.cu" />
+    <CudaCompile Include="kernels.cu" />
     <CudaCompile Include="simulate.cu" />
   </ItemGroup>
   <ItemGroup>
@@ -179,6 +181,7 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
       <FileType>Document</FileType>
     </ClInclude>
     <None Include="..\README.md" />
+    <None Include="Fluid.cuh" />
     <None Include="kernels.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
