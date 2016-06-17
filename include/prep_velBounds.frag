@@ -24,7 +24,7 @@ void main()
 	velocity.xy += (noise.xy * boundaryMixed * dt * .1);
 	velocity *= velToggle;
 
-	// always have mouse or multitouch affect velocity
+	// !! Always add multitouch velocity !!
 	velocity += multitouch.xy * 100.;
 
 

@@ -38,7 +38,7 @@ float getC(vec3 _def){
     return atan(length(cross(_def,def_D)), dot(_def,def_D));
 }
 float getH(vec3 _def){
-    vec3 def_E_axis = vec3(0.,1.,0.);
+    vec3 def_E_axis = vec3(0.0,1.0,0.0);
     return atan(_def.z, _def.y) - atan(def_E_axis.z, def_E_axis.y) ;
 }
 
@@ -47,11 +47,11 @@ vec3 rgb2bch(vec3 _col){
   return vec3(getB(DEF), getC(DEF), getH(DEF));
 }
 
-vec3 bch2rgb(vec3 _bch){
+vec3 bch2rgb(vec3 _bch, float c = 1.0, float s = 1.0){
   vec3 def;
   def.x = _bch.x * cos(_bch.y);
-  def.y = _bch.x * sin(_bch.y) * cos(_bch.z);
-  def.z = _bch.x * sin(_bch.y) * sin(_bch.z);
+  def.y = _bch.x * sin(_bch.y) * cos(_bch.z * c);
+  def.z = _bch.x * sin(_bch.y) * sin(_bch.z * s);
   return def2rgb(def);
 }
 //BCH

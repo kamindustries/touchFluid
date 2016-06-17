@@ -20,28 +20,35 @@ void main()
 	float velocityMag = sqrt(pt.r*pt.r + pt.g*pt.g);
 	velocityMag = clamp(velocityMag*5., 0., 1.);
 
-	float mixed = velocityMag;
-	float shapeMult = shapes.r * (dt * 10.);
-	float imgMult = rgb2bch(images.rgb).x * (dt * 5.);
-	float wordMult = rgb2bch(words.rgb).x * (dt * 5.);
-	float multitouchMult = multitouch.b * (10.);
+	float dtMult = dt * 10.;
 
-	mixed = mixed + shapeMult + imgMult + wordMult + multitouchMult;
+	float mixed = pt.b * dtMult;
+	float shapeMult = shapes.r * dtMult;
+	float imgMult = rgb2bch(images.rgb).x * dtMult;
+	float wordMult = rgb2bch(words.rgb).x * dtMult;
+	float multitouchMult = multitouch.b * 2.2;
+
+	mixed = mixed + shapeMult + imgMult + wordMult;
 	mixed = clamp(mixed, 0., 1.);
 
 	float densA = 0.;
 	float densB = mixed * densToggle;
 	float temp = mixed * tempToggle;
 
+	// !! Always add multitouch density !!
+	densB += multitouchMult;
+
 	if (rdEq > 0){
-		densA = mixed * densToggle;
-		densB = mixed * F * .5;
+		if (rdEq > 1) densA = clamp(densB, 0., 1.);
+		densA = densA * densToggle;
+		densB = clamp(densB, 0., 1.) * F * .5;
 	}
 
+	// TO DENSITY AND TEMPERATURE
 	vec4 cd = vec4(densA, densB, temp, 1.);
 	toDensTemp = cd;
 
+	// TO PARTICLE COLOR
 	cd = ((pt*velocityMag*10.) + shapes + images + words + multitouch);
-
 	toParticles = cd;
 }
