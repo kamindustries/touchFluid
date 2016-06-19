@@ -157,12 +157,12 @@ void Fluid::reactDiffAdvect(float* inObstacle)
 	for (int i = 0; i < nDiff; i++){
 		Diffusion<<<grid,threads>>>(chemA_prev, laplacian, inObstacle, dA, xLen, yLen, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(chemA_prev, laplacian, dimX, dimY);
-		SetBoundary<<<grid,threads>>>(0, chemA_prev, inObstacle, dimX, dimY);
+		//SetBoundary<<<grid,threads>>>(0, chemA_prev, inObstacle, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
 		Diffusion<<<grid,threads>>>(chemB_prev, laplacian, inObstacle, dB, xLen, yLen, dt, dimX, dimY);
 		AddLaplacian<<<grid,threads>>>(chemB_prev, laplacian, dimX, dimY);
-		SetBoundary<<<grid,threads>>>(0, chemB_prev, inObstacle, dimX, dimY);
+		//SetBoundary<<<grid,threads>>>(0, chemB_prev, inObstacle, dimX, dimY);
 		ClearArray<<<grid,threads>>>(laplacian, 0.0, dimX, dimY);
 
 		for (int j = 0; j < nReact; j++){
