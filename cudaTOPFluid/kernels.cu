@@ -524,10 +524,10 @@ ComputeDivergence( float *u, float *v, float *boundary, float *dest, int w, int 
 		int oW = boundary[4 * IX(x-1, y) + 0];
 
 		// Use center pressure for solid cells:
-		//if (oN > 0) vN = boundary[4 * IX(x, y+1) + 1];
-		//if (oS > 0) vS = boundary[4 * IX(x, y-1) + 1];
-		//if (oE > 0) vE = boundary[4 * IX(x+1, y) + 2];
-		//if (oW > 0) vW = boundary[4 * IX(x-1, y) + 2];
+		if (oN > 0) vN = boundary[4 * IX(x, y+1) + 1];
+		if (oS > 0) vS = boundary[4 * IX(x, y-1) + 1];
+		if (oE > 0) vE = boundary[4 * IX(x+1, y) + 2];
+		if (oW > 0) vW = boundary[4 * IX(x-1, y) + 2];
 
 		//float cellSize = 1.0;
 		//dest[id] = (0.5 / cellSize) * ( u[IX(x+1, y)] - u[IX(x-1, y)] + v[IX(x, y+1)] - v[IX(x, y-1)] );
@@ -637,7 +637,8 @@ Diffusion(float *_chem, float *_lap, float *_boundary, float _difConst, float xL
 	int id = IX(x,y);
 
 	// have to do this check for non-powers of 2 to work...?
-	if (checkBounds(_boundary, x, y, w, h)) {
+	//if (checkBounds(_boundary, x, y, w, h)) {
+	if (checkBounds(x, y, w, h)) {
 
 		// constants
 		//float xLength = (float)x/100.0; //gray-scott
