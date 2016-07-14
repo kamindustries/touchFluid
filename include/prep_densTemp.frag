@@ -20,7 +20,7 @@ void main()
 	float velocityMag = sqrt(pt.r*pt.r + pt.g*pt.g);
 	velocityMag = clamp(velocityMag*5., 0., 1.);
 
-	float dtMult = dt * 10.;
+	float dtMult = dt * 20.;
 
 	float mixed = pt.b * dtMult;
 	float shapeMult = shapes.r * dtMult;

@@ -1,7 +1,9 @@
 #ifndef __CUDA_TOP_FLUID_UTIL_FUNCTIONS__
 #define __CUDA_TOP_FLUID_UTIL_FUNCTIONS__
 
+#include <map>
 #include <string>
+#include "common.h"
 #include "TCUDA_enum.h"
 #include "private/TCUDA_Types.h"
 
@@ -47,5 +49,37 @@ void printNodeInfo(const int nparams, const TCUDA_ParamInfo **params){
 	printf("----------\n\n");
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Find connected nodes for easier reference in a map
+///////////////////////////////////////////////////////////////////////////////
+bool findNodes(const int nparams, const TCUDA_ParamInfo **params, std::map<std::string, const TCUDA_ParamInfo*> &nodes){
+
+	// search incoming params[] for matching name and assigne nodes<> value to it
+	bool missingNodes = false;
+	typedef std::map<std::string, const TCUDA_ParamInfo*>::iterator iterator;
+	for (iterator it = nodes.begin(); it != nodes.end(); it++) {
+		for (int i = 0; i < nparams; i++){
+			if (hasBeginning(params[i]->name, it->first.c_str())) {
+				it->second = params[i];
+				printf("findNodes(): found %s: %s\n", it->first.c_str(), it->second->name);
+				break;
+			}
+			if (i == nparams-1) {
+				printf("findNodes(): error: could not find %s!\n", it->first.c_str());
+				missingNodes = true;
+			}
+		}
+	}
+
+	if (missingNodes) {
+		printf("findNodes(): couldn't find required nodes. To continue, attach required nodes.\n");
+		return false;
+	}
+	else {
+		printf("findNodes(): done finding nodes.\n");
+		return true;
+	}
+
+}
 
 #endif
