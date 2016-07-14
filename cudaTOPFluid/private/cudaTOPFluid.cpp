@@ -11,9 +11,9 @@
 // This define is needed before each function so that is exported and Touch can find it in the .dll
 
 
-//#include "../common.cuh"
 #include "TCUDA_Types.h"
-//#include "../util_functions.hpp"
+#include "../common.h"
+
 
 // This is needed around every function so the compiler keeps the function name exactly, so Touch can find it.
 extern "C" {
@@ -65,12 +65,13 @@ DLLEXPORT bool
 tCudaGetTOPOutputInfo(const TCUDA_NodeInfo *info, TCUDA_TOPOutputInfo *oinfo)
 {
     // Filling this in just as an example, since we are returning false this data is ignored.
-	oinfo->width = 512;
-	oinfo->height = 512;
-	oinfo->aspectX = 1;
-	oinfo->aspectY = 1;
-	oinfo->pixelFormat = TCUDA_PIXEL_FORMAT_RGBA32;
+	//oinfo->width = 512;
+	//oinfo->height = 512;
+	//oinfo->aspectX = 1;
+	//oinfo->aspectY = 1;
+	//oinfo->pixelFormat = TCUDA_PIXEL_FORMAT_RGBA32;
 
+	//return true;
 	return false;
 }
 
@@ -87,8 +88,8 @@ DLLEXPORT void
 tCudaGetTOPKernelOutputInfo(const TCUDA_NodeInfo *info, TCUDA_TOPKernelOutputInfo *oinfo)
 {
 	oinfo->chanOrder = TCUDA_CHAN_BGRA;
-	//oinfo->dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
 	oinfo->dataFormat = TCUDA_DATA_FORMAT_FLOAT;
+	//oinfo->dataFormat = TCUDA_DATA_FORMAT_UNSIGNED_BYTE;
 }
 
 // This function will be called once for every param that could potentially be passed into the cuda function
@@ -135,7 +136,6 @@ tCudaGetParamInfo(const TCUDA_NodeInfo *info, const TCUDA_ParamRequest *request,
 	{
 		return false;
 	}
-
 
 }
 

@@ -29,10 +29,10 @@
 
 #include <string>
 #include <cuda_runtime_api.h>
-#include <driver_types.h>
+//#include <driver_types.h>
 
 #include "../defines.h"
-#include "../common.cuh"
+//#include "../common.cuh"
 
 typedef enum
 {
@@ -428,3 +428,4 @@ typedef void (__cdecl *TCUDAGETINFODATCOLUMN)(const TCUDA_NodeInfo *,
 #endif 
 
 #endif
+
