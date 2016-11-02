@@ -1,11 +1,21 @@
 # touchFluid
-###Performing dynamic systems
+### Fluids in TouchDesigner and GLSL
 
-touchFluid explores computational fluid dynamics and reaction-diffusion using CUDA in TouchDesigner. It features Semi-Lagrangian fluid advection along a 2d grid with pressure, vorticity confinement, temperature, and obstacles. Density is coupled with a reaction-diffusion system which feeds back into the buoyancy of the velocity field to create unusual morphogenic patterns.
+touchFluid is a lightweight 2d Semi-Lagrangian fluid solver for TouchDesigner. It features vorticity confinement, temperature, buoyancy, and obstacles.
+
+The repo has a .toe project file and a .tox component file. The project file shows examples of impulses and obstacles: holding 1, 2, and 3 on the keyboard will add velocity, density, and temperature at the mouse position. The tox is just the core simulation component with inputs and outputs for the advection of velocity, density/temperature, and RGBA color fields.
+
+I have added the shaders as separate files for easy editing and versioning, though they are not required to run either the .toe or .tox.
 
 touchFluid is a key component in my Masters [thesis project](http://timesequence.blogspot.com/) for the Media Arts & Technology program at the University of California Santa Barbara.
 
-#### Licensing
-touchFluid code is released under the [MIT License](https://github.com/kamindustries/touchFluid/blob/master/LICENSE). 
+This was originally written in CUDA. That repo was forked and can be found here: [touchFluidCUDA](https://github.com/kamindustries/touchFluidCUDA).
 
-Note: Two files required to build the CUDA .dll are restricted by Derivative Inc. to be shared with only authorized licensees of TouchDesigner, so they are not included in this repo. Send me a message if you want them and let Derivative know you would like them to ease up on their usage license for these files.
+#### References
+1. Jos Stam, [_Stable Fluids_](http://dl.acm.org/citation.cfm?id=311548).
+2. Ronald Fedikw, Jos Stam, and Henrik Wann Jensen, [_Visual Simulation of Smoke_](http://dl.acm.org/citation.cfm?id=383260).
+3. Mark Harris, [_Fast Fluid Dynamics Simulation on the GPU_](http://http.developer.nvidia.com/GPUGems/gpugems_ch38.html).
+3. Philip Rideout, [_Simple Fluid Simulation_](http://prideout.net/blog/?p=58).
+
+#### Licensing
+touchFluid code is released under the [MIT License](https://github.com/kamindustries/touchFluid/blob/master/LICENSE).
