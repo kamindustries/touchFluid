@@ -15,13 +15,4 @@ void main()
   vec4 impulse = texelFetch(sTD2DInputs[IMPULSE], TC, 0);
   x += impulse;
   fragColor = x;
-  // float d = distance(vec2(1280/2,720/3), gl_FragCoord.xy);
-  // float Radius = 100.;
-  // if (d < Radius) {
-  //   float a = (Radius - d) * 0.5;
-  //   a = min(a, 1.0);
-  //   fragColor = vec4(vec3(1.), a);
-  // } else {
-  //     fragColor = x;
-  // }
 }

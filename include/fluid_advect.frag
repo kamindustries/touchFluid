@@ -1,13 +1,12 @@
 out vec4 fragColor;
+
 uniform float dt;
 uniform vec4 diffusionRate;
-uniform vec2 res;
 
 int SOURCE = 0;
 int VELOCITY = 1;
 int OBSTACLE = 2;
 
-vec2 invSize = 1./res;
 
 void main()
 {
@@ -20,7 +19,7 @@ void main()
 
   vec2 fragCoord = gl_FragCoord.xy;
   vec2 v = texture(sTD2DInputs[VELOCITY], vUV.st).xy;
-  vec2 advectedCoord = invSize * (fragCoord - dt * v);
+  vec2 advectedCoord = (fragCoord - dt * v) * uTD2DInfos[SOURCE].res.xy;  // 1/res
   fragColor = texture(sTD2DInputs[SOURCE], advectedCoord) * diffusionRate;
 
 }
