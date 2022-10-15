@@ -38,10 +38,10 @@ void main()
         multW.x = -1.;
     }
 
-    vec2 vN = texelFetchOffset(sTD2DInputs[VELOCITY], T, 0, offsetN).xy * multN;
-    vec2 vS = texelFetchOffset(sTD2DInputs[VELOCITY], T, 0, offsetS).xy * multS;
-    vec2 vE = texelFetchOffset(sTD2DInputs[VELOCITY], T, 0, offsetE).xy * multE;
-    vec2 vW = texelFetchOffset(sTD2DInputs[VELOCITY], T, 0, offsetW).xy * multW;
+    vec2 vN = texelFetch(sTD2DInputs[VELOCITY], T + offsetN, 0).xy * multN;
+    vec2 vS = texelFetch(sTD2DInputs[VELOCITY], T + offsetS, 0).xy * multS;
+    vec2 vE = texelFetch(sTD2DInputs[VELOCITY], T + offsetE, 0).xy * multE;
+    vec2 vW = texelFetch(sTD2DInputs[VELOCITY], T + offsetW, 0).xy * multW;    
 
     fragColor = vec4( halfInverseCell*halfInverseCell * ((vE.x - vW.x) + (vN.y - vS.y)) );
 
