@@ -1,6 +1,7 @@
 out vec4 fragColor;
 
 uniform float gradientScale;
+uniform float pressureMult;
 
 int VELOCITY = 0;
 int PRESSURE = 1;
@@ -15,6 +16,8 @@ void main()
     P.y = texelFetchOffset(sTD2DInputs[PRESSURE], T, 0, ivec2(0, -1)).r;
     P.z = texelFetchOffset(sTD2DInputs[PRESSURE], T, 0, ivec2(1, 0)).r;
     P.w = texelFetchOffset(sTD2DInputs[PRESSURE], T, 0, ivec2(-1, 0)).r;
+
+    P *= pressureMult;
 
     // pure Neumann pressure boundary
     vec4 oN = texelFetch(sTD2DInputs[OBSTACLE_N], T, 0);
